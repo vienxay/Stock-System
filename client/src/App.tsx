@@ -23,6 +23,7 @@ const NotificationsPage    = lazy(() => import('@/pages/notifications/Notificati
 const UsersPage            = lazy(() => import('@/pages/users/UsersPage'));
 const ReportsPage          = lazy(() => import('@/pages/reports/ReportsPage'));
 const AuditLogsPage        = lazy(() => import('@/pages/audit/AuditLogsPage'));
+const BackupPage           = lazy(() => import('@/pages/backup/BackupPage'));
 const SettingsPage         = lazy(() => import('@/pages/settings/SettingsPage'));
 
 const qc = new QueryClient({
@@ -159,6 +160,11 @@ export default function App() {
               {/* Audit Log — admin only */}
               <Route path="audit-logs" element={
                 <RoleGuard roles={['admin']}><AuditLogsPage /></RoleGuard>
+              } />
+
+              {/* Backup — admin only */}
+              <Route path="backup" element={
+                <RoleGuard roles={['admin']}><BackupPage /></RoleGuard>
               } />
 
               {/* ແຈ້ງເຕືອນ — ທຸກ role */}

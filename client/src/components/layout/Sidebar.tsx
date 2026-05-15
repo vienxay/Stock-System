@@ -2,7 +2,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   LayoutDashboard, Package, Tag, Truck, FileText,
-  ShoppingCart, Receipt, ArrowLeftRight, Bell, X, LogOut, User, Users, BarChart2, Settings, Building2, Shield,
+  ShoppingCart, Receipt, ArrowLeftRight, Bell, X, LogOut, User, Users, BarChart2, Settings, Building2, Shield, Database,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import { authApi, settingsApi } from '@/api/endpoints';
@@ -52,6 +52,10 @@ const nav: { to: string; icon: React.ElementType; label: string; roles: RoleCode
   },
   {
     to: '/audit-logs', icon: Shield, label: 'Audit Log',
+    roles: ['admin'],
+  },
+  {
+    to: '/backup', icon: Database, label: 'Backup ຂໍ້ມູນ',
     roles: ['admin'],
   },
   {
