@@ -60,16 +60,16 @@ function FlowStep({ label, count, icon: Icon, color, bg, isLast }: {
   color: string; bg: string; isLast?: boolean;
 }) {
   return (
-    <div className="flex items-center gap-2 flex-1">
-      <div className="flex-1 flex flex-col items-center gap-2">
-        <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-md ${bg}`}>
-          <Icon className={`w-7 h-7 ${color}`} />
+    <div className="flex items-center gap-1 sm:gap-2 flex-1 min-w-0">
+      <div className="flex-1 flex flex-col items-center gap-1 sm:gap-2 min-w-0">
+        <div className={`w-9 h-9 sm:w-14 sm:h-14 rounded-xl sm:rounded-2xl flex items-center justify-center shadow-sm sm:shadow-md shrink-0 ${bg}`}>
+          <Icon className={`w-4 h-4 sm:w-7 sm:h-7 ${color}`} />
         </div>
-        <p className={`text-2xl font-bold ${color}`}>{count.toLocaleString()}</p>
-        <p className="text-xs text-gray-500 text-center font-medium">{label}</p>
+        <p className={`text-lg sm:text-2xl font-bold leading-none ${color}`}>{count.toLocaleString()}</p>
+        <p className="text-[10px] sm:text-xs text-gray-500 text-center font-medium leading-tight">{label}</p>
       </div>
       {!isLast && (
-        <ArrowRight className="w-5 h-5 text-gray-300 shrink-0 mt-[-20px]" />
+        <ArrowRight className="w-3 h-3 sm:w-5 sm:h-5 text-gray-300 shrink-0 mb-4" />
       )}
     </div>
   );
@@ -167,18 +167,18 @@ export default function DashboardPage() {
     <div className="space-y-5">
 
       {/* ─── Page Title ─────────────────────────────────────── */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Dashboard</h2>
+          <h2 className="text-xl sm:text-2xl font-bold text-gray-900">Dashboard</h2>
           <p className="text-sm text-gray-500 mt-0.5">ພາບລວມລະບົບ Procurement & Stock</p>
         </div>
-        <span className="text-xs text-gray-400 bg-gray-100 px-3 py-1 rounded-full">
+        <span className="text-xs text-gray-400 bg-gray-100 px-3 py-1 rounded-full self-start sm:self-auto">
           ອັບເດດທຸກ 60 ວິ
         </span>
       </div>
 
       {/* ─── KPI Cards ─────────────────────────────────────── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <KpiCard
           label="PR ລໍຮັບອະນຸມັດ"
           value={prPending}
@@ -219,12 +219,12 @@ export default function DashboardPage() {
           <TrendingUp className="w-4 h-4 text-primary-600" />
           ການໄຫຼຂໍ້ມູນ Procurement
         </h3>
-        <div className="flex items-center justify-between">
-          <FlowStep label="ໃບຂໍຊື້ PR"     count={d?.flow.pr      ?? 0} icon={FileText}    color="text-amber-600"  bg="bg-amber-50"   />
-          <FlowStep label="ໃບສັ່ງຊື້ PO"    count={d?.flow.po      ?? 0} icon={ShoppingCart} color="text-blue-600"   bg="bg-blue-50"    />
-          <FlowStep label="ຮັບສິນຄ້າ GR"   count={d?.flow.gr      ?? 0} icon={Package}      color="text-green-600"  bg="bg-green-50"   />
-          <FlowStep label="Invoice"         count={d?.flow.invoice ?? 0} icon={Receipt}      color="text-violet-600" bg="bg-violet-50"  />
-          <FlowStep label="ຊຳລະແລ້ວ"       count={d?.flow.paid    ?? 0} icon={CheckCircle}  color="text-emerald-600" bg="bg-emerald-50" isLast />
+        <div className="flex items-center overflow-x-auto pb-1 gap-0">
+          <FlowStep label="ໃບຂໍຊື້ PR"    count={d?.flow.pr      ?? 0} icon={FileText}    color="text-amber-600"   bg="bg-amber-50"   />
+          <FlowStep label="ໃບສັ່ງຊື້ PO"   count={d?.flow.po      ?? 0} icon={ShoppingCart} color="text-blue-600"    bg="bg-blue-50"    />
+          <FlowStep label="ຮັບ GR"         count={d?.flow.gr      ?? 0} icon={Package}      color="text-green-600"   bg="bg-green-50"   />
+          <FlowStep label="Invoice"        count={d?.flow.invoice ?? 0} icon={Receipt}      color="text-violet-600"  bg="bg-violet-50"  />
+          <FlowStep label="ຊຳລະແລ້ວ"      count={d?.flow.paid    ?? 0} icon={CheckCircle}  color="text-emerald-600" bg="bg-emerald-50" isLast />
         </div>
         {/* Progress bar */}
         {prTotal > 0 && (
@@ -247,7 +247,7 @@ export default function DashboardPage() {
       </div>
 
       {/* ─── Charts Row ─────────────────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-5">
 
         {/* Area Chart — Monthly Trend */}
         <div className="card lg:col-span-2">
@@ -319,11 +319,11 @@ export default function DashboardPage() {
 
       {/* ─── Payment Summary ────────────────────────────────── */}
       <div className="card bg-gradient-to-br from-emerald-50 to-teal-50 border-emerald-100">
-        <h3 className="font-semibold text-gray-900 mb-5 flex items-center gap-2">
+        <h3 className="font-semibold text-gray-900 mb-4 sm:mb-5 flex items-center gap-2">
           <Banknote className="w-4 h-4 text-emerald-600" />
           ສະຫລຸບຍອດການຊຳລະ
         </h3>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
 
           {/* ຈ່າຍທັງໝົດ */}
           <div className="bg-white rounded-xl p-4 shadow-sm border border-emerald-100">
@@ -423,7 +423,7 @@ export default function DashboardPage() {
       </div>
 
       {/* ─── Bottom Row ─────────────────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-5">
 
         {/* Bar — PO Status */}
         <div className="card">
