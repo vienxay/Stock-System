@@ -3,6 +3,8 @@ import app          from './app';
 import { prisma }   from './config/prisma';
 import { logger }   from './config/logger';
 import { env }      from './config/env';
+import cron         from 'node-cron';
+import { createJsonBackup, createSqlBackup, createExcelBackup, cleanOldBackups } from './services/backupService';
 
 async function bootstrap() {
   try {
@@ -21,6 +23,24 @@ async function bootstrap() {
         process.exit(0);
       });
     };
+
+    // ─── Auto Backup ທຸກ ວັນ 01:00 AM ──────────────────────────
+    cron.schedule('0 1 * * *', async () => {
+      try {
+        logger.info('⏰ Auto backup starting...');
+        await Promise.all([
+          createJsonBackup(true),
+          createSqlBackup(true),
+          createExcelBackup(true),
+        ]);
+        cleanOldBackups(30);
+        logger.info('✅ Auto backup completed (JSON + SQL + Excel)');
+      } catch (err) {
+        logger.error('❌ Auto backup failed:', err);
+      }
+    }, { timezone: 'Asia/Vientiane' });
+
+    logger.info('📅 Auto backup scheduled: daily 01:00 AM (Vientiane)');
 
     process.on('SIGTERM', () => graceful('SIGTERM'));
     process.on('SIGINT',  () => graceful('SIGINT'));

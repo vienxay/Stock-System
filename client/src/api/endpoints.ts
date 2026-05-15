@@ -107,22 +107,27 @@ export const settingsApi = {
 };
 
 // ─── Backup ───────────────────────────────────────────────────
+const dlFetch = async (path: string, fallbackName: string) => {
+  const token = useAuthStore.getState().accessToken;
+  const res   = await fetch(`/api/v1${path}`, { headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok) throw new Error('ດາວໂຫລດລົ້ມເຫລວ');
+  const cd       = res.headers.get('Content-Disposition') ?? '';
+  const filename = cd.match(/filename="(.+)"/)?.[1] ?? fallbackName;
+  const blob     = await res.blob();
+  const url      = URL.createObjectURL(blob);
+  const a        = Object.assign(document.createElement('a'), { href: url, download: filename });
+  a.click(); URL.revokeObjectURL(url);
+};
+
 export const backupApi = {
-  summary: () => api.get('/backup/summary'),
-  download: async () => {
-    const token = useAuthStore.getState().accessToken;
-    const res   = await fetch('/api/v1/backup/export', {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!res.ok) throw new Error('Export ລົ້ມເຫລວ');
-    const cd       = res.headers.get('Content-Disposition') ?? '';
-    const filename = cd.match(/filename="(.+)"/)?.[1] ?? 'backup.json';
-    const blob     = await res.blob();
-    const url      = URL.createObjectURL(blob);
-    const a        = document.createElement('a');
-    a.href = url; a.download = filename; a.click();
-    URL.revokeObjectURL(url);
-  },
+  summary:     ()                 => api.get('/backup/summary'),
+  list:        ()                 => api.get('/backup/list'),
+  saveNow:     ()                 => api.post('/backup/save-now'),
+  deleteFile:  (filename: string) => api.delete(`/backup/file/${filename}`),
+  downloadJson:  () => dlFetch('/backup/json',              'backup.json'),
+  downloadSql:   () => dlFetch('/backup/sql',               'backup.sql'),
+  downloadExcel: () => dlFetch('/backup/excel',             'backup.xlsx'),
+  downloadFile:  (f: string) => dlFetch(`/backup/download/${f}`, f),
 };
 
 // ─── Audit Logs ──────────────────────────────────────────────

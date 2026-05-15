@@ -1,98 +1,90 @@
 import { Router, Response } from 'express';
-import { prisma }       from '../config/prisma';
+import path    from 'path';
+import fs      from 'fs';
 import { authenticate } from '../middlewares/authMiddleware';
 import { authorize }    from '../middlewares/authorizeMiddleware';
+import { ApiResponse }  from '../utils/ApiResponse';
+import {
+  createJsonBackup, createSqlBackup, createExcelBackup,
+  listBackups, cleanOldBackups, BACKUP_DIR,
+} from '../services/backupService';
 
 const router = Router();
 router.use(authenticate);
 router.use(authorize('admin'));
 
-// ─── Export all data as JSON ────────────────────────────────
-router.get('/export', async (_req, res: Response) => {
-  const now = new Date();
-  const filename = `backup-${now.toISOString().slice(0, 10)}-${now.getHours()}h${String(now.getMinutes()).padStart(2, '0')}.json`;
-
-  const [
-    users, roles, categories, units, suppliers,
-    products, purchaseRequests, purchaseOrders,
-    goodsReceipts, invoices, payments, stockMovements,
-    notifications, systemSettings,
-  ] = await prisma.$transaction([
-    prisma.user.findMany({ include: { role: true } }),
-    prisma.role.findMany(),
-    prisma.category.findMany(),
-    prisma.unit.findMany(),
-    prisma.supplier.findMany(),
-    prisma.product.findMany({ include: { category: true, unit: true } }),
-    prisma.purchaseRequest.findMany({
-      include: { items: true, approvals: true, requester: { select: { fullName: true } } },
-    }),
-    prisma.purchaseOrder.findMany({
-      include: { items: true, supplier: { select: { name: true } } },
-    }),
-    prisma.goodsReceipt.findMany({ include: { items: true } }),
-    prisma.invoice.findMany(),
-    prisma.payment.findMany(),
-    prisma.stockMovement.findMany(),
-    prisma.notification.findMany({ orderBy: { createdAt: 'desc' }, take: 1000 }),
-    prisma.systemSettings.findFirst(),
-  ]);
-
-  const backup = {
-    metadata: {
-      version:     '1.0',
-      exportedAt:  now.toISOString(),
-      exportedBy:  'ລະບົບສາງ PR-PO',
-      tables:      14,
-      recordCount: {
-        users:           users.length,
-        roles:           roles.length,
-        categories:      categories.length,
-        units:           units.length,
-        suppliers:       suppliers.length,
-        products:        products.length,
-        purchaseRequests: purchaseRequests.length,
-        purchaseOrders:  purchaseOrders.length,
-        goodsReceipts:   goodsReceipts.length,
-        invoices:        invoices.length,
-        payments:        payments.length,
-        stockMovements:  stockMovements.length,
-      },
-    },
-    data: {
-      users, roles, categories, units, suppliers,
-      products, purchaseRequests, purchaseOrders,
-      goodsReceipts, invoices, payments, stockMovements,
-      notifications, systemSettings,
-    },
-  };
-
-  const json = JSON.stringify(backup, (_k, v) =>
-    typeof v === 'bigint' ? Number(v) : v, 2);
-
+// ─── 1. Download JSON Backup ──────────────────────────────────
+router.get('/json', async (_req, res: Response) => {
+  const now      = new Date();
+  const filename = `backup-json-${now.toISOString().slice(0,10)}.json`;
+  const { json } = await createJsonBackup(false);
   res.setHeader('Content-Type', 'application/json');
   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-  res.setHeader('Content-Length', Buffer.byteLength(json, 'utf8'));
   res.send(json);
 });
 
-// ─── Backup summary (size info) ─────────────────────────────
-router.get('/summary', async (_req, res: Response) => {
-  const counts = await prisma.$transaction([
-    prisma.user.count(),
-    prisma.product.count(),
-    prisma.purchaseRequest.count(),
-    prisma.purchaseOrder.count(),
-    prisma.invoice.count(),
-    prisma.payment.count(),
-    prisma.stockMovement.count(),
+// ─── 2. Download SQL Backup ───────────────────────────────────
+router.get('/sql', async (_req, res: Response) => {
+  const now      = new Date();
+  const filename = `backup-sql-${now.toISOString().slice(0,10)}.sql`;
+  const { sql }  = await createSqlBackup(false);
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.send(sql);
+});
+
+// ─── 3. Download Excel Backup ─────────────────────────────────
+router.get('/excel', async (_req, res: Response) => {
+  const now      = new Date();
+  const filename = `backup-excel-${now.toISOString().slice(0,10)}.xlsx`;
+  const { wb }   = await createExcelBackup(false);
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  await wb.xlsx.write(res);
+  res.end();
+});
+
+// ─── Manual Save All 3 to server ─────────────────────────────
+router.post('/save-now', async (_req, res: Response) => {
+  const [j, s, e] = await Promise.all([
+    createJsonBackup(true),
+    createSqlBackup(true),
+    createExcelBackup(true),
   ]);
-  const [users, products, prs, pos, invoices, payments, movements] = counts;
-  res.json({
-    success: true,
-    data: { users, products, prs, pos, invoices, payments, movements,
-      total: counts.reduce((s, c) => s + c, 0) },
-  });
+  cleanOldBackups(30);
+  ApiResponse.success(res, {
+    saved: [
+      { type: 'json',  file: path.basename(j.file!) },
+      { type: 'sql',   file: path.basename(s.file!) },
+      { type: 'excel', file: path.basename(e.file!) },
+    ],
+  }, 'Backup ບັນທຶກລົງ server ສຳເລັດ');
+});
+
+// ─── List saved backups ───────────────────────────────────────
+router.get('/list', (_req, res: Response) => {
+  ApiResponse.success(res, listBackups());
+});
+
+// ─── Download a saved backup file ────────────────────────────
+router.get('/download/:filename', (req, res: Response) => {
+  const file = path.join(BACKUP_DIR, path.basename(req.params.filename));
+  if (!fs.existsSync(file)) { res.status(404).json({ success: false, message: 'ບໍ່ພົບໄຟລ໌' }); return; }
+  res.download(file);
+});
+
+// ─── Delete a saved backup ────────────────────────────────────
+router.delete('/file/:filename', (req, res: Response) => {
+  const file = path.join(BACKUP_DIR, path.basename(req.params.filename));
+  if (fs.existsSync(file)) fs.unlinkSync(file);
+  ApiResponse.success(res, null, 'ລຶບໄຟລ໌ສຳເລັດ');
+});
+
+// ─── Summary stats ────────────────────────────────────────────
+router.get('/summary', async (_req, res: Response) => {
+  const files  = listBackups();
+  const latest = files[0] ?? null;
+  ApiResponse.success(res, { totalFiles: files.length, latest, files: files.slice(0, 10) });
 });
 
 export default router;
