@@ -1,4 +1,5 @@
 import api from './client';
+import { useAuthStore } from '@/stores/authStore';
 import type {
   LoginResponse, Product, Category, Supplier,
   PurchaseRequest, PurchaseOrder, Invoice, StockMovement,
@@ -103,6 +104,25 @@ export const stockApi = {
 export const settingsApi = {
   get:    () => api.get('/settings'),
   update: (body: object) => api.put('/settings', body),
+};
+
+// ─── Backup ───────────────────────────────────────────────────
+export const backupApi = {
+  summary: () => api.get('/backup/summary'),
+  download: async () => {
+    const token = useAuthStore.getState().accessToken;
+    const res   = await fetch('/api/v1/backup/export', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) throw new Error('Export ລົ້ມເຫລວ');
+    const cd       = res.headers.get('Content-Disposition') ?? '';
+    const filename = cd.match(/filename="(.+)"/)?.[1] ?? 'backup.json';
+    const blob     = await res.blob();
+    const url      = URL.createObjectURL(blob);
+    const a        = document.createElement('a');
+    a.href = url; a.download = filename; a.click();
+    URL.revokeObjectURL(url);
+  },
 };
 
 // ─── Audit Logs ──────────────────────────────────────────────

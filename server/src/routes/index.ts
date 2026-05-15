@@ -14,6 +14,7 @@ import userRoutes            from './userRoutes';
 import reportRoutes          from './reportRoutes';
 import uploadRoutes          from './uploadRoutes';
 import auditLogRoutes        from './auditLogRoutes';
+import backupRoutes          from './backupRoutes';
 import settingsRoutes        from './settingsRoutes';
 
 const router = Router();
@@ -33,6 +34,7 @@ router.use('/users',             userRoutes);
 router.use('/reports',           reportRoutes);
 router.use('/upload',            uploadRoutes);
 router.use('/audit-logs',        auditLogRoutes);
+router.use('/backup',            backupRoutes);
 router.use('/settings',          settingsRoutes);
 
 export default router;

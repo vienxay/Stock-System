@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Building2, Phone, Mail, MapPin, FileText, ImagePlus, X, Save, Loader2 } from 'lucide-react';
+import { Building2, Phone, Mail, MapPin, FileText, ImagePlus, X, Save, Loader2, Download, Database, CheckCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { settingsApi, uploadApi } from '@/api/endpoints';
+import { settingsApi, uploadApi, backupApi } from '@/api/endpoints';
 import { Button } from '@/components/ui/Button';
 
 interface Settings {
@@ -27,6 +27,7 @@ interface FormState {
 
 export default function SettingsPage() {
   const qc = useQueryClient();
+  const [backupLoading, setBackupLoading] = useState(false);
 
   const [form,         setForm]         = useState<FormState>({
     companyName: '', companyNameEn: '', phone: '', email: '', address: '', taxId: '',
@@ -294,8 +295,8 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* ─── Save button bottom ─── */}
-      <div className="flex justify-end pb-6">
+      {/* ─── Save button ─── */}
+      <div className="flex justify-end pb-2">
         <Button
           loading={saveMut.isPending}
           disabled={logoUploading || !form.companyName}
@@ -303,6 +304,61 @@ export default function SettingsPage() {
         >
           <Save className="w-4 h-4" />ບັນທຶກການຕັ້ງຄ່າ
         </Button>
+      </div>
+
+      {/* ─── Backup Section ─── */}
+      <div className="card border-2 border-dashed border-blue-200 bg-blue-50/40 space-y-4 pb-6">
+        <div className="flex items-start gap-3">
+          <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center shrink-0">
+            <Database className="w-5 h-5 text-blue-600" />
+          </div>
+          <div>
+            <h3 className="font-semibold text-gray-900">Backup ຂໍ້ມູນ</h3>
+            <p className="text-sm text-gray-500 mt-0.5">Export ຂໍ້ມູນທຸກຕາຕະລາງເປັນ JSON file — ໃຊ້ເກັບສຳຮອງ</p>
+          </div>
+        </div>
+
+        {/* What's included */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+          {['ສິນຄ້າ & ໝວດໝູ່', 'Supplier & User', 'PR / PO / GR', 'Invoice & Payment'].map((item) => (
+            <div key={item} className="flex items-center gap-1.5 text-gray-600">
+              <CheckCircle className="w-3.5 h-3.5 text-green-500 shrink-0" />
+              {item}
+            </div>
+          ))}
+        </div>
+
+        {/* Backup info */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3 bg-white rounded-xl border border-blue-100">
+          <div className="text-sm text-gray-600">
+            <p className="font-medium text-gray-800">Manual Backup</p>
+            <p className="text-xs text-gray-400 mt-0.5">
+              ດາວໂຫລດ backup-YYYY-MM-DD-HHhMM.json
+            </p>
+          </div>
+          <Button
+            loading={backupLoading}
+            onClick={async () => {
+              setBackupLoading(true);
+              try {
+                await backupApi.download();
+                toast.success('Backup ດາວໂຫລດສຳເລັດ');
+              } catch {
+                toast.error('Backup ລົ້ມເຫລວ');
+              } finally {
+                setBackupLoading(false);
+              }
+            }}
+          >
+            <Download className="w-4 h-4" />ດາວໂຫລດ Backup
+          </Button>
+        </div>
+
+        {/* Warning */}
+        <p className="text-xs text-amber-600 flex items-start gap-1.5">
+          <span className="shrink-0 mt-0.5">⚠</span>
+          ເກັບໄຟລ໌ backup ໄວ້ໃນທີ່ປອດໄພ — ມີຂໍ້ມູນລູກຄ້າ ແລະ ຂໍ້ມູນທາງການເງິນ
+        </p>
       </div>
 
     </div>
