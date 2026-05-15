@@ -149,16 +149,43 @@ export async function createExcelBackup(saveToDisk = false) {
     });
   };
 
+  // ─── Flatten/convert value ──────────────────────────────────
+  const toCell = (v: unknown): string | number | boolean | null => {
+    if (v === null || v === undefined)    return null;
+    if (v instanceof Date)                return v.toLocaleDateString('lo-LA');
+    if (typeof v === 'bigint')            return Number(v);
+    if (typeof v === 'boolean')           return v ? 'ແມ່ນ' : 'ບໍ່';
+    if (typeof v === 'number')            return v;
+    if (typeof v === 'string')            return v;
+    // nested object → ສະແດງ value ທີ່ readable
+    if (typeof v === 'object' && v !== null) {
+      const obj = v as Record<string, unknown>;
+      // ຖ້າມີ nameLo → ໃຊ້ nameLo
+      if ('nameLo' in obj)  return `${obj.code ?? ''} (${obj.nameLo ?? ''})`;
+      // ຖ້າມີ fullName → ໃຊ້ fullName
+      if ('fullName' in obj) return String(obj.fullName ?? '');
+      // fallback → JSON
+      return JSON.stringify(v, (_k, val) => typeof val === 'bigint' ? Number(val) : val);
+    }
+    return String(v);
+  };
+
   const addSheet = (name: string, rows: Record<string, unknown>[]) => {
     if (!rows.length) return;
     const ws   = wb.addWorksheet(name);
+    // ─── Flatten first row to get column keys ─────────────────
     const keys = Object.keys(rows[0]);
-    ws.columns = keys.map((k) => ({ header: k, key: k, width: Math.min(Math.max(k.length + 4, 12), 30) }));
+    ws.columns = keys.map((k) => ({
+      header: k, key: k,
+      width: Math.min(Math.max(k.length + 6, 14), 35),
+    }));
     styleHeader(ws.getRow(1));
+
     rows.forEach((r, i) => {
-      const row = ws.addRow(Object.fromEntries(
-        Object.entries(r).map(([k, v]) => [k, v instanceof Date ? v.toISOString() : typeof v === 'bigint' ? Number(v) : v])
-      ));
+      const rowData = Object.fromEntries(
+        keys.map((k) => [k, toCell(r[k])])
+      );
+      const row = ws.addRow(rowData);
       styleRow(row, i);
     });
   };
