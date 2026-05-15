@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import {
-  AreaChart, Area, PieChart, Pie, Cell, BarChart, Bar,
+  AreaChart, Area, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
 import {
@@ -146,9 +146,23 @@ export default function DashboardPage() {
     .filter((p) => p._count.id > 0)
     .map((p) => ({ name: p.status.replace(/_/g, ' '), value: p._count.id, status: p.status }));
 
-  const poPieData  = (d?.po ?? [])
-    .filter((p) => p._count.id > 0)
-    .map((p) => ({ name: p.status.replace(/_/g, ' '), value: p._count.id, status: p.status }));
+  // PO status — ສະແດງທຸກ status ລວມຖ້ວນ (ລວມ 0)
+  const PO_STATUS_LABELS: Record<string, string> = {
+    open:             'ເປີດ',
+    sent:             'ສົ່ງ Supplier',
+    partial_received: 'ຮັບບາງສ່ວນ',
+    received:         'ຮັບຄົບ',
+    cancelled:        'ຍົກເລີກ',
+  };
+  const PO_STATUS_ALL = ['open', 'sent', 'partial_received', 'received', 'cancelled'];
+  const poStatusMap   = new Map((d?.po ?? []).map((p) => [p.status, p._count.id]));
+  const poStatusData  = PO_STATUS_ALL.map((s) => ({
+    status: s,
+    label:  PO_STATUS_LABELS[s] ?? s,
+    count:  poStatusMap.get(s) ?? 0,
+    color:  PO_COLORS[s] ?? '#94a3b8',
+  }));
+  const poTotal = poStatusData.reduce((s, p) => s + p.count, 0);
 
   const monthlyChart = (d?.monthly ?? []).map((m) => ({
     month:    m.month,
@@ -425,25 +439,42 @@ export default function DashboardPage() {
       {/* ─── Bottom Row ─────────────────────────────────────── */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-5">
 
-        {/* Bar — PO Status */}
+        {/* PO Status List */}
         <div className="card">
-          <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            <ShoppingCart className="w-4 h-4 text-blue-500" />
-            ສະຖານະ PO
-          </h3>
-          <ResponsiveContainer width="100%" height={210}>
-            <BarChart data={poPieData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }} barSize={28}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal vertical={false} />
-              <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-              <Tooltip content={<PieTooltip />} />
-              <Bar dataKey="value" radius={[6, 6, 0, 0]}>
-                {poPieData.map((entry) => (
-                  <Cell key={entry.status} fill={PO_COLORS[entry.status] ?? '#94a3b8'} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+              <ShoppingCart className="w-4 h-4 text-blue-500" />
+              ສະຖານະ PO
+            </h3>
+            <span className="text-xs font-semibold text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+              {poTotal} ລາຍການ
+            </span>
+          </div>
+          <div className="space-y-3">
+            {poStatusData.map((s) => {
+              const pct = poTotal > 0 ? Math.round((s.count / poTotal) * 100) : 0;
+              return (
+                <div key={s.status}>
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: s.color }} />
+                      <span className="text-sm text-gray-600">{s.label}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-400">{pct}%</span>
+                      <span className="text-sm font-bold text-gray-800 w-6 text-right">{s.count}</span>
+                    </div>
+                  </div>
+                  <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all duration-500"
+                      style={{ width: `${pct}%`, background: s.color }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
 
         {/* Low Stock Items */}
