@@ -126,22 +126,26 @@ export async function createExcelBackup(saveToDisk = false) {
   const wb   = new ExcelJS.Workbook();
   wb.creator = 'ລະບົບສາງ PR-PO';
 
+  // Lao-compatible fonts (ໃຊ້ Phetsarath OT ທີ່ standard ທີ່ສຸດ)
+  const LAO_FONT = 'Phetsarath OT';
+
   const styleHeader = (row: ExcelJS.Row) => {
-    row.height = 24;
+    row.height = 26;
     row.eachCell((c) => {
-      c.fill  = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E40AF' } };
-      c.font  = { bold: true, color: { argb: 'FFFFFFFF' }, name: 'Calibri' };
-      c.alignment = { vertical: 'middle', horizontal: 'center' };
-      c.border = { top:{style:'thin'}, left:{style:'thin'}, bottom:{style:'thin'}, right:{style:'thin'} };
+      c.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E40AF' } };
+      c.font      = { bold: true, color: { argb: 'FFFFFFFF' }, name: LAO_FONT, size: 11 };
+      c.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+      c.border    = { top:{style:'thin'}, left:{style:'thin'}, bottom:{style:'thin'}, right:{style:'thin'} };
     });
   };
   const styleRow = (row: ExcelJS.Row, idx: number) => {
-    row.height = 18;
+    row.height = 20;
     row.eachCell((c) => {
       if (idx % 2 === 1) c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0F4FF' } };
+      c.font   = { name: LAO_FONT, size: 11 };   // ← ຕ້ອງ set ທຸກ cell ດ້ວຍ
       c.border = { top:{style:'thin',color:{argb:'FFD1D5DB'}}, left:{style:'thin',color:{argb:'FFD1D5DB'}},
                    bottom:{style:'thin',color:{argb:'FFD1D5DB'}}, right:{style:'thin',color:{argb:'FFD1D5DB'}} };
-      c.alignment = { vertical: 'middle' };
+      c.alignment = { vertical: 'middle', wrapText: false };
     });
   };
 

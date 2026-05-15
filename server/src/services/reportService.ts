@@ -9,7 +9,7 @@ class ReportService {
     row.height = 28;
     row.eachCell((cell) => {
       cell.fill   = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E40AF' } };
-      cell.font   = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11, name: 'Calibri' };
+      cell.font   = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11, name: 'Phetsarath OT' };
       cell.border = {
         top: { style: 'thin' }, left: { style: 'thin' },
         bottom: { style: 'thin' }, right: { style: 'thin' },
@@ -38,14 +38,14 @@ class ReportService {
     ws.mergeCells(1, 1, 1, colCount);
     const cell = ws.getCell('A1');
     cell.value     = title;
-    cell.font      = { bold: true, size: 14, color: { argb: 'FF1E40AF' }, name: 'Calibri' };
+    cell.font      = { bold: true, size: 14, color: { argb: 'FF1E40AF' }, name: 'Phetsarath OT' };
     cell.alignment = { horizontal: 'center', vertical: 'middle' };
     ws.getRow(1).height = 36;
 
     ws.mergeCells(2, 1, 2, colCount);
     const sub  = ws.getCell('A2');
     sub.value  = `ວັນທີ Export: ${new Date().toLocaleDateString('lo-LA')}`;
-    sub.font   = { size: 10, color: { argb: 'FF6B7280' }, name: 'Calibri' };
+    sub.font   = { size: 10, color: { argb: 'FF6B7280' }, name: 'Phetsarath OT' };
     sub.alignment = { horizontal: 'center', vertical: 'middle' };
     ws.getRow(2).height = 20;
   }
@@ -95,8 +95,8 @@ class ReportService {
       });
       this.styleRow(row, i);
       if (isLow) {
-        row.getCell('current').font = { bold: true, color: { argb: 'FFEF4444' }, name: 'Calibri' };
-        row.getCell('status').font  = { bold: true, color: { argb: 'FFEF4444' }, name: 'Calibri' };
+        row.getCell('current').font = { bold: true, color: { argb: 'FFEF4444' }, name: 'Phetsarath OT' };
+        row.getCell('status').font  = { bold: true, color: { argb: 'FFEF4444' }, name: 'Phetsarath OT' };
         lowCount++;
       }
     });
@@ -116,7 +116,7 @@ class ReportService {
     sumRow.height = 24;
     sumRow.eachCell((cell) => {
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E40AF' } };
-      cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, name: 'Calibri', size: 11 };
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, name: 'Phetsarath OT', size: 11 };
       cell.alignment = { vertical: 'middle' };
     });
     sumRow.getCell('current').numFmt = '#,##0';
@@ -180,7 +180,7 @@ class ReportService {
 
     ws.addRow([]);
     const sumRow = ws.addRow(['', '', '', '', '', '', `ລວມ: ${prs.length} ລາຍການ`]);
-    sumRow.font = { bold: true, name: 'Calibri' };
+    sumRow.font = { bold: true, name: 'Phetsarath OT' };
 
     return wb;
   }
@@ -242,7 +242,7 @@ class ReportService {
 
     ws.addRow([]);
     const sumRow = ws.addRow(['', '', '', 'ລວມທັງໝົດ:', total, `${pos.length} ລາຍການ`]);
-    sumRow.font = { bold: true, name: 'Calibri' };
+    sumRow.font = { bold: true, name: 'Phetsarath OT' };
     sumRow.getCell(5).numFmt = '#,##0';
 
     return wb;
@@ -309,7 +309,7 @@ class ReportService {
       });
       this.styleRow(row, i);
       if (inv.status === 'mismatch') {
-        row.getCell('variance').font = { bold: true, color: { argb: 'FFEF4444' }, name: 'Calibri' };
+        row.getCell('variance').font = { bold: true, color: { argb: 'FFEF4444' }, name: 'Phetsarath OT' };
       }
     });
 
@@ -329,7 +329,7 @@ class ReportService {
     sumRow.height = 24;
     sumRow.eachCell((cell) => {
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E40AF' } };
-      cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, name: 'Calibri', size: 11 };
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, name: 'Phetsarath OT', size: 11 };
       cell.alignment = { vertical: 'middle' };
     });
     sumRow.getCell('invNum').alignment = { vertical: 'middle', horizontal: 'left' };
@@ -395,15 +395,15 @@ class ReportService {
       this.styleRow(row, i);
       const qtyCell = row.getCell('qty');
       if (m.movementType.includes('in')) {
-        qtyCell.font = { color: { argb: 'FF16A34A' }, name: 'Calibri' };
+        qtyCell.font = { color: { argb: 'FF16A34A' }, name: 'Phetsarath OT' };
       } else {
-        qtyCell.font = { color: { argb: 'FFEF4444' }, name: 'Calibri' };
+        qtyCell.font = { color: { argb: 'FFEF4444' }, name: 'Phetsarath OT' };
       }
     });
 
     ws.addRow([]);
     const sumRow = ws.addRow(['', '', '', '', '', `ລວມ: ${movements.length} ລາຍການ`]);
-    sumRow.font = { bold: true, name: 'Calibri' };
+    sumRow.font = { bold: true, name: 'Phetsarath OT' };
 
     return wb;
   }
