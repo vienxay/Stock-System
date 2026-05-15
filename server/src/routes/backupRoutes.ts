@@ -68,8 +68,7 @@ router.get('/export', async (_req, res: Response) => {
   };
 
   const json = JSON.stringify(backup, (_k, v) =>
-    typeof v === 'bigint' ? Number(v) : v,
-  , 2);
+    typeof v === 'bigint' ? Number(v) : v, 2);
 
   res.setHeader('Content-Type', 'application/json');
   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
