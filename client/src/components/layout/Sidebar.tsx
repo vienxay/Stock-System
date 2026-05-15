@@ -1,82 +1,71 @@
-import { NavLink, useNavigate } from 'react-router-dom';
+import { useState } from 'react';
+import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   LayoutDashboard, Package, Tag, Truck, FileText,
-  ShoppingCart, Receipt, ArrowLeftRight, Bell, X, LogOut, User, Users, BarChart2, Settings, Building2, Shield, Database,
+  ShoppingCart, Receipt, ArrowLeftRight, Bell, X, LogOut, User,
+  Users, BarChart2, Settings, Building2, Shield, Database,
+  ChevronDown, ChevronRight,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import { authApi, settingsApi } from '@/api/endpoints';
 import type { RoleCode } from '@/types';
 
-// ─── ກຳນົດ menu + ສິດທິທີ່ເຫັນ ──────────────────────────────
-const nav: { to: string; icon: React.ElementType; label: string; roles: RoleCode[] }[] = [
+// ─── Nav item types ───────────────────────────────────────────
+interface NavItem {
+  to:    string;
+  icon:  React.ElementType;
+  label: string;
+  roles: RoleCode[];
+}
+interface NavGroup {
+  group:    true;
+  icon:     React.ElementType;
+  label:    string;
+  roles:    RoleCode[];
+  children: NavItem[];
+}
+type NavEntry = NavItem | NavGroup;
+
+// ─── Nav config ───────────────────────────────────────────────
+const nav: NavEntry[] = [
+  { to: '/', icon: LayoutDashboard, label: 'Dashboard',
+    roles: ['admin','user','finance','md','stock','purchasing','ap'] },
+  { to: '/products', icon: Package, label: 'ສິນຄ້າ',
+    roles: ['admin','stock'] },
+  { to: '/categories', icon: Tag, label: 'ໝວດໝູ່',
+    roles: ['admin'] },
+  { to: '/users', icon: Users, label: 'ຈັດການ Users',
+    roles: ['admin'] },
+  { to: '/suppliers', icon: Truck, label: 'Supplier',
+    roles: ['admin','purchasing','ap'] },
+  { to: '/purchase-requests', icon: FileText, label: 'ໃບຂໍຊື້ (PR)',
+    roles: ['admin','user','finance','md','purchasing'] },
+  { to: '/purchase-orders', icon: ShoppingCart, label: 'ໃບສັ່ງຊື້ (PO)',
+    roles: ['admin','stock','purchasing','finance','md'] },
+  { to: '/invoices', icon: Receipt, label: 'Invoice',
+    roles: ['admin','ap'] },
+  { to: '/stock-movements', icon: ArrowLeftRight, label: 'ການເຄື່ອນໄຫວ Stock',
+    roles: ['admin','stock'] },
+  { to: '/reports', icon: BarChart2, label: 'ລາຍງານ',
+    roles: ['admin','finance','md','ap','purchasing','stock'] },
+  { to: '/notifications', icon: Bell, label: 'ແຈ້ງເຕືອນ',
+    roles: ['admin','user','finance','md','stock','purchasing','ap'] },
+  // ─── Dropdown group ──────────────────────────────────────────
   {
-    to: '/', icon: LayoutDashboard, label: 'Dashboard',
-    roles: ['admin', 'user', 'finance', 'md', 'stock', 'purchasing', 'ap'],
-  },
-  {
-    to: '/products', icon: Package, label: 'ສິນຄ້າ',
-    roles: ['admin', 'stock'],
-  },
-  {
-    to: '/categories', icon: Tag, label: 'ໝວດໝູ່',
+    group: true, icon: Settings, label: 'ຕັ້ງຄ່າ & ຈັດການ',
     roles: ['admin'],
-  },
-  {
-    to: '/users', icon: Users, label: 'ຈັດການ Users',
-    roles: ['admin'],
-  },
-  {
-    to: '/suppliers', icon: Truck, label: 'Supplier',
-    roles: ['admin', 'purchasing', 'ap'],
-  },
-  {
-    to: '/purchase-requests', icon: FileText, label: 'ໃບຂໍຊື້ (PR)',
-    roles: ['admin', 'user', 'finance', 'md', 'purchasing'],
-  },
-  {
-    to: '/purchase-orders', icon: ShoppingCart, label: 'ໃບສັ່ງຊື້ (PO)',
-    roles: ['admin', 'stock', 'purchasing', 'finance', 'md'],
-  },
-  {
-    to: '/invoices', icon: Receipt, label: 'Invoice',
-    roles: ['admin', 'ap'],
-  },
-  {
-    to: '/stock-movements', icon: ArrowLeftRight, label: 'ການເຄື່ອນໄຫວ Stock',
-    roles: ['admin', 'stock'],
-  },
-  {
-    to: '/reports', icon: BarChart2, label: 'ລາຍງານ',
-    roles: ['admin', 'finance', 'md', 'ap', 'purchasing', 'stock'],
-  },
-  {
-    to: '/audit-logs', icon: Shield, label: 'Audit Log',
-    roles: ['admin'],
-  },
-  {
-    to: '/backup', icon: Database, label: 'Backup ຂໍ້ມູນ',
-    roles: ['admin'],
-  },
-  {
-    to: '/notifications', icon: Bell, label: 'ແຈ້ງເຕືອນ',
-    roles: ['admin', 'user', 'finance', 'md', 'stock', 'purchasing', 'ap'],
-  },
-  {
-    to: '/settings', icon: Settings, label: 'ຕັ້ງຄ່າລະບົບ',
-    roles: ['admin'],
+    children: [
+      { to: '/settings',   icon: Settings,  label: 'ຕັ້ງຄ່າລະບົບ', roles: ['admin'] },
+      { to: '/audit-logs', icon: Shield,    label: 'Audit Log',     roles: ['admin'] },
+      { to: '/backup',     icon: Database,  label: 'Backup ຂໍ້ມູນ', roles: ['admin'] },
+    ],
   },
 ];
 
-// ─── Role badge colour ────────────────────────────────────────
 const roleBadge: Record<string, string> = {
-  admin:      'bg-red-500',
-  finance:    'bg-emerald-600',
-  md:         'bg-purple-600',
-  stock:      'bg-orange-500',
-  purchasing: 'bg-blue-600',
-  ap:         'bg-teal-600',
-  user:       'bg-gray-500',
+  admin: 'bg-red-500', finance: 'bg-emerald-600', md: 'bg-purple-600',
+  stock: 'bg-orange-500', purchasing: 'bg-blue-600', ap: 'bg-teal-600', user: 'bg-gray-500',
 };
 
 interface Props { open: boolean; onClose: () => void; }
@@ -84,6 +73,7 @@ interface Props { open: boolean; onClose: () => void; }
 export function Sidebar({ open, onClose }: Props) {
   const { user, logout } = useAuthStore();
   const navigate         = useNavigate();
+  const location         = useLocation();
   const role             = user?.role.code as RoleCode | undefined;
 
   const { data: settingsData } = useQuery({
@@ -93,13 +83,32 @@ export function Sidebar({ open, onClose }: Props) {
   });
   const settings = (settingsData?.data as { data: { companyName: string; companyNameEn?: string; logoUrl?: string } } | undefined)?.data;
 
-  const visibleNav = role ? nav.filter((item) => item.roles.includes(role)) : [];
+  // ─── Auto-expand group if current path matches child ─────────
+  const groupPaths = (g: NavGroup) => g.children.map((c) => c.to);
+  const defaultOpen = nav
+    .filter((e): e is NavGroup => 'group' in e)
+    .filter((g) => groupPaths(g).some((p) => location.pathname.startsWith(p)))
+    .map((g) => g.label);
+  const [openGroups, setOpenGroups] = useState<string[]>(defaultOpen);
+
+  const toggleGroup = (label: string) =>
+    setOpenGroups((prev) =>
+      prev.includes(label) ? prev.filter((l) => l !== label) : [...prev, label],
+    );
+
+  const visible = nav.filter((e) =>
+    role && e.roles.includes(role)
+  );
 
   const handleLogout = async () => {
     try { await authApi.logout(); } catch { /* ignore */ }
     logout();
     navigate('/login');
   };
+
+  const linkCls = (isActive: boolean) =>
+    `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors
+    ${isActive ? 'bg-primary-600 text-white' : 'text-gray-300 hover:bg-gray-800 hover:text-white'}`;
 
   return (
     <>
@@ -137,23 +146,53 @@ export function Sidebar({ open, onClose }: Props) {
 
         {/* Nav */}
         <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-0.5">
-          {visibleNav.map(({ to, icon: Icon, label }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end={to === '/'}
-              onClick={onClose}
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors
-                ${isActive
-                  ? 'bg-primary-600 text-white'
-                  : 'text-gray-300 hover:bg-gray-800 hover:text-white'}`
-              }
-            >
-              <Icon className="w-4 h-4 shrink-0" />
-              {label}
-            </NavLink>
-          ))}
+          {visible.map((entry) => {
+            // ─── Group ────────────────────────────────────────
+            if ('group' in entry) {
+              const isExpanded  = openGroups.includes(entry.label);
+              const hasActive   = entry.children.some((c) => location.pathname.startsWith(c.to));
+              const Icon        = entry.icon;
+              const Chevron     = isExpanded ? ChevronDown : ChevronRight;
+              const visibleKids = entry.children.filter((c) => role && c.roles.includes(role));
+              if (!visibleKids.length) return null;
+              return (
+                <div key={entry.label}>
+                  <button
+                    onClick={() => toggleGroup(entry.label)}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors
+                      ${hasActive ? 'text-white bg-gray-800' : 'text-gray-300 hover:bg-gray-800 hover:text-white'}`}
+                  >
+                    <Icon className="w-4 h-4 shrink-0" />
+                    <span className="flex-1 text-left">{entry.label}</span>
+                    <Chevron className="w-3.5 h-3.5 shrink-0 transition-transform" />
+                  </button>
+
+                  {/* Sub-items */}
+                  {isExpanded && (
+                    <div className="ml-3 mt-0.5 pl-3 border-l border-gray-700 space-y-0.5">
+                      {visibleKids.map(({ to, icon: CIcon, label }) => (
+                        <NavLink key={to} to={to} onClick={onClose}
+                          className={({ isActive }) => linkCls(isActive)}>
+                          <CIcon className="w-4 h-4 shrink-0" />
+                          {label}
+                        </NavLink>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
+            // ─── Regular item ─────────────────────────────────
+            const Icon = entry.icon;
+            return (
+              <NavLink key={entry.to} to={entry.to} end={entry.to === '/'} onClick={onClose}
+                className={({ isActive }) => linkCls(isActive)}>
+                <Icon className="w-4 h-4 shrink-0" />
+                {entry.label}
+              </NavLink>
+            );
+          })}
         </nav>
 
         {/* User info */}
@@ -169,8 +208,7 @@ export function Sidebar({ open, onClose }: Props) {
           </div>
           <button onClick={handleLogout}
             className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-300 hover:text-white hover:bg-gray-800 rounded-lg transition-colors">
-            <LogOut className="w-4 h-4" />
-            ອອກຈາກລະບົບ
+            <LogOut className="w-4 h-4" />ອອກຈາກລະບົບ
           </button>
         </div>
       </aside>
