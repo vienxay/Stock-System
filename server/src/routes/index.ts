@@ -1,0 +1,38 @@
+import { Router } from 'express';
+import authRoutes            from './authRoutes';
+import productRoutes         from './productRoutes';
+import categoryRoutes        from './categoryRoutes';
+import supplierRoutes        from './supplierRoutes';
+import purchaseRequestRoutes from './purchaseRequestRoutes';
+import purchaseOrderRoutes   from './purchaseOrderRoutes';
+import invoiceRoutes         from './invoiceRoutes';
+import notificationRoutes    from './notificationRoutes';
+import dashboardRoutes       from './dashboardRoutes';
+import stockMovementRoutes   from './stockMovementRoutes';
+import unitRoutes            from './unitRoutes';
+import userRoutes            from './userRoutes';
+import reportRoutes          from './reportRoutes';
+import uploadRoutes          from './uploadRoutes';
+import auditLogRoutes        from './auditLogRoutes';
+import settingsRoutes        from './settingsRoutes';
+
+const router = Router();
+
+router.use('/auth',              authRoutes);
+router.use('/products',          productRoutes);
+router.use('/categories',        categoryRoutes);
+router.use('/suppliers',         supplierRoutes);
+router.use('/purchase-requests', purchaseRequestRoutes);
+router.use('/purchase-orders',   purchaseOrderRoutes);
+router.use('/invoices',          invoiceRoutes);
+router.use('/notifications',     notificationRoutes);
+router.use('/dashboard',         dashboardRoutes);
+router.use('/stock-movements',   stockMovementRoutes);
+router.use('/units',             unitRoutes);
+router.use('/users',             userRoutes);
+router.use('/reports',           reportRoutes);
+router.use('/upload',            uploadRoutes);
+router.use('/audit-logs',        auditLogRoutes);
+router.use('/settings',          settingsRoutes);
+
+export default router;

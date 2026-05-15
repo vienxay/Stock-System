@@ -1,0 +1,494 @@
+// ============================================================
+// ລະບົບສາງ PR-PO | Prisma Schema
+// PostgreSQL
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ───────────────────────────────────────────────────
+
+enum RoleCode {
+  user
+  finance
+  md
+  stock
+  purchasing
+  ap
+  admin
+}
+
+enum Priority {
+  low
+  normal
+  high
+  urgent
+}
+
+enum PrStatus {
+  draft
+  submitted
+  finance_review
+  finance_approved
+  finance_rejected
+  md_review
+  md_approved
+  md_rejected
+  po_created
+  cancelled
+}
+
+enum ApprovalDecision {
+  pending
+  approved
+  rejected
+}
+
+enum PoStatus {
+  open
+  sent
+  partial_received
+  received
+  cancelled
+}
+
+enum GrStatus {
+  draft
+  completed
+  rejected
+}
+
+enum MovementType {
+  gr_in
+  issue_out
+  return_in
+  adjust_in
+  adjust_out
+  transfer
+}
+
+enum InvoiceStatus {
+  received
+  matched
+  mismatch
+  approved
+  paid
+}
+
+enum PaymentMethod {
+  bank_transfer
+  cash
+  cheque
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  APPROVE
+  REJECT
+  SUBMIT
+  CANCEL
+}
+
+// ─── Users & Roles ───────────────────────────────────────────
+
+model Role {
+  id      Int      @id @default(autoincrement())
+  code    RoleCode @unique
+  nameLo  String   @map("name_lo") @db.VarChar(100)
+  nameEn  String   @map("name_en") @db.VarChar(100)
+
+  users   User[]
+
+  @@map("roles")
+}
+
+model User {
+  id         Int     @id @default(autoincrement())
+  roleId     Int     @map("role_id")
+  employeeId String? @unique @map("employee_id") @db.VarChar(20)
+  username   String  @unique @db.VarChar(50)
+  password   String  @db.VarChar(255)
+  fullName   String  @map("full_name") @db.VarChar(100)
+  email      String? @unique @db.VarChar(100)
+  phone      String? @db.VarChar(20)
+  department String? @db.VarChar(100)
+  isActive   Boolean @default(true) @map("is_active")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  role              Role               @relation(fields: [roleId], references: [id])
+  purchaseRequests  PurchaseRequest[]  @relation("Requester")
+  approvals         PrApproval[]       @relation("Approver")
+  receivedGRs       GoodsReceipt[]     @relation("Receiver")
+  createdPOs        PurchaseOrder[]    @relation("POCreator")
+  createdInvoices   Invoice[]          @relation("InvoiceCreator")
+  approvedPayments  Payment[]          @relation("PaymentApprover")
+  stockMovements    StockMovement[]
+  notifications     Notification[]
+  auditLogs         AuditLog[]
+  products          Product[]
+
+  @@map("users")
+}
+
+// ─── Products & Categories ───────────────────────────────────
+
+model Category {
+  id       Int      @id @default(autoincrement())
+  code     String   @unique @db.VarChar(20)
+  nameLo   String   @map("name_lo") @db.VarChar(100)
+  nameEn   String?  @map("name_en") @db.VarChar(100)
+  parentId Int?     @map("parent_id")
+  isActive Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  parent   Category?  @relation("CategoryTree", fields: [parentId], references: [id])
+  children Category[] @relation("CategoryTree")
+  products Product[]
+
+  @@map("categories")
+}
+
+model Unit {
+  id     Int     @id @default(autoincrement())
+  code   String  @unique @db.VarChar(20)
+  nameLo String  @map("name_lo") @db.VarChar(50)
+  nameEn String? @map("name_en") @db.VarChar(50)
+
+  products Product[]
+
+  @@map("units")
+}
+
+model Product {
+  id            Int      @id @default(autoincrement())
+  categoryId    Int      @map("category_id")
+  unitId        Int      @map("unit_id")
+  createdBy     Int?     @map("created_by")
+  code          String   @unique @db.VarChar(30)
+  barcode       String?  @unique @db.VarChar(500)
+  nameLo        String   @map("name_lo") @db.VarChar(200)
+  nameEn        String?  @map("name_en") @db.VarChar(200)
+  description   String?  @db.Text
+  standardPrice Decimal  @default(0) @map("standard_price") @db.Decimal(15, 2)
+  currentStock  Int      @default(0) @map("current_stock")
+  minStock      Int      @default(0) @map("min_stock")
+  maxStock      Int      @default(0) @map("max_stock")
+  location      String?  @db.VarChar(100)
+  imageUrl      String?  @map("image_url") @db.VarChar(500)
+  isActive      Boolean  @default(true) @map("is_active")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  category          Category            @relation(fields: [categoryId], references: [id])
+  unit              Unit                @relation(fields: [unitId], references: [id])
+  creator           User?               @relation(fields: [createdBy], references: [id])
+  prItems           PurchaseRequestItem[]
+  poItems           PurchaseOrderItem[]
+  grItems           GoodsReceiptItem[]
+  stockMovements    StockMovement[]
+
+  @@index([currentStock, minStock])
+  @@index([categoryId])
+  @@map("products")
+}
+
+// ─── Suppliers ───────────────────────────────────────────────
+
+model Supplier {
+  id          Int      @id @default(autoincrement())
+  code        String   @unique @db.VarChar(20)
+  name        String   @db.VarChar(200)
+  taxId       String?  @unique @map("tax_id") @db.VarChar(50)
+  contactName String?  @map("contact_name") @db.VarChar(100)
+  phone       String?  @db.VarChar(30)
+  email       String?  @db.VarChar(100)
+  address     String?  @db.Text
+  bankName    String?  @map("bank_name") @db.VarChar(100)
+  bankAccount String?  @map("bank_account") @db.VarChar(50)
+  paymentTerm Int      @default(30) @map("payment_term")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  prItems        PurchaseRequestItem[]
+  purchaseOrders PurchaseOrder[]
+  invoices       Invoice[]
+
+  @@map("suppliers")
+}
+
+// ─── Purchase Request ─────────────────────────────────────────
+
+model PurchaseRequest {
+  id           Int       @id @default(autoincrement())
+  requesterId  Int       @map("requester_id")
+  prNumber     String    @unique @map("pr_number") @db.VarChar(20)
+  department   String?   @db.VarChar(100)
+  purpose      String?   @db.Text
+  priority     Priority  @default(normal)
+  requiredDate DateTime? @map("required_date") @db.Date
+  status       PrStatus  @default(draft)
+  totalAmount  Decimal   @default(0) @map("total_amount") @db.Decimal(15, 2)
+  note         String?   @db.Text
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  requester     User                  @relation("Requester", fields: [requesterId], references: [id])
+  items         PurchaseRequestItem[]
+  approvals     PrApproval[]
+  purchaseOrder PurchaseOrder?
+
+  @@index([status])
+  @@index([requesterId])
+  @@map("purchase_requests")
+}
+
+model PurchaseRequestItem {
+  id         Int     @id @default(autoincrement())
+  prId       Int     @map("pr_id")
+  productId  Int     @map("product_id")
+  supplierId Int?    @map("supplier_id")
+  quantity   Int
+  unitPrice  Decimal @default(0) @map("unit_price") @db.Decimal(15, 2)
+  note       String? @db.Text
+
+  purchaseRequest PurchaseRequest @relation(fields: [prId], references: [id], onDelete: Cascade)
+  product         Product         @relation(fields: [productId], references: [id])
+  supplier        Supplier?       @relation(fields: [supplierId], references: [id])
+  poItems         PurchaseOrderItem[]
+
+  @@map("purchase_request_items")
+}
+
+// ─── PR Approvals ─────────────────────────────────────────────
+
+model PrApproval {
+  id         Int              @id @default(autoincrement())
+  prId       Int              @map("pr_id")
+  approverId Int              @map("approver_id")
+  level      Int              // 1 = Finance, 2 = MD
+  decision   ApprovalDecision @default(pending)
+  comment    String?          @db.Text
+  actedAt    DateTime?        @map("acted_at")
+  createdAt  DateTime         @default(now()) @map("created_at")
+
+  purchaseRequest PurchaseRequest @relation(fields: [prId], references: [id])
+  approver        User            @relation("Approver", fields: [approverId], references: [id])
+
+  @@unique([prId, level])
+  @@map("pr_approvals")
+}
+
+// ─── Purchase Order ───────────────────────────────────────────
+
+model PurchaseOrder {
+  id              Int       @id @default(autoincrement())
+  prId            Int       @unique @map("pr_id")
+  supplierId      Int       @map("supplier_id")
+  createdBy       Int       @map("created_by")
+  poNumber        String    @unique @map("po_number") @db.VarChar(20)
+  deliveryDate    DateTime? @map("delivery_date") @db.Date
+  deliveryAddress String?   @map("delivery_address") @db.Text
+  paymentTerm     Int       @default(30) @map("payment_term")
+  status          PoStatus  @default(open)
+  totalAmount     Decimal   @default(0) @map("total_amount") @db.Decimal(15, 2)
+  note            String?   @db.Text
+  sentAt          DateTime? @map("sent_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  purchaseRequest PurchaseRequest     @relation(fields: [prId], references: [id])
+  supplier        Supplier            @relation(fields: [supplierId], references: [id])
+  creator         User                @relation("POCreator", fields: [createdBy], references: [id])
+  items           PurchaseOrderItem[]
+  goodsReceipts   GoodsReceipt[]
+  invoices        Invoice[]
+
+  @@index([status])
+  @@map("purchase_orders")
+}
+
+model PurchaseOrderItem {
+  id          Int     @id @default(autoincrement())
+  poId        Int     @map("po_id")
+  prItemId    Int     @map("pr_item_id")
+  productId   Int     @map("product_id")
+  quantity    Int
+  unitPrice   Decimal @map("unit_price") @db.Decimal(15, 2)
+  receivedQty Int     @default(0) @map("received_qty")
+
+  purchaseOrder   PurchaseOrder       @relation(fields: [poId], references: [id], onDelete: Cascade)
+  prItem          PurchaseRequestItem @relation(fields: [prItemId], references: [id])
+  product         Product             @relation(fields: [productId], references: [id])
+  grItems         GoodsReceiptItem[]
+
+  @@map("purchase_order_items")
+}
+
+// ─── Goods Receipt ────────────────────────────────────────────
+
+model GoodsReceipt {
+  id           Int      @id @default(autoincrement())
+  poId         Int      @map("po_id")
+  receivedBy   Int      @map("received_by")
+  grNumber     String   @unique @map("gr_number") @db.VarChar(20)
+  receivedDate DateTime @map("received_date") @db.Date
+  status       GrStatus @default(completed)
+  note         String?  @db.Text
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  purchaseOrder PurchaseOrder      @relation(fields: [poId], references: [id])
+  receiver      User               @relation("Receiver", fields: [receivedBy], references: [id])
+  items         GoodsReceiptItem[]
+  invoices      Invoice[]
+
+  @@map("goods_receipts")
+}
+
+model GoodsReceiptItem {
+  id          Int  @id @default(autoincrement())
+  grId        Int  @map("gr_id")
+  poItemId    Int  @map("po_item_id")
+  productId   Int  @map("product_id")
+  orderedQty  Int  @map("ordered_qty")
+  receivedQty Int  @map("received_qty")
+  rejectedQty Int  @default(0) @map("rejected_qty")
+  note        String? @db.Text
+
+  goodsReceipt  GoodsReceipt    @relation(fields: [grId], references: [id], onDelete: Cascade)
+  poItem        PurchaseOrderItem @relation(fields: [poItemId], references: [id])
+  product       Product         @relation(fields: [productId], references: [id])
+
+  @@map("goods_receipt_items")
+}
+
+// ─── Stock Movement ───────────────────────────────────────────
+
+model StockMovement {
+  id           Int          @id @default(autoincrement())
+  productId    Int          @map("product_id")
+  createdBy    Int?         @map("created_by")
+  movementType MovementType @map("movement_type")
+  quantity     Int
+  beforeQty    Int          @map("before_qty")
+  afterQty     Int          @map("after_qty")
+  refType      String?      @map("ref_type") @db.VarChar(20)
+  refId        Int?         @map("ref_id")
+  note         String?      @db.Text
+  createdAt    DateTime     @default(now()) @map("created_at")
+
+  product Product @relation(fields: [productId], references: [id])
+  creator User?   @relation(fields: [createdBy], references: [id])
+
+  @@index([productId, createdAt])
+  @@map("stock_movements")
+}
+
+// ─── Invoice & Payment ────────────────────────────────────────
+
+model Invoice {
+  id             Int           @id @default(autoincrement())
+  grId           Int           @map("gr_id")
+  poId           Int           @map("po_id")
+  supplierId     Int           @map("supplier_id")
+  createdBy      Int?          @map("created_by")
+  invoiceNumber  String        @map("invoice_number") @db.VarChar(50)
+  invoiceDate    DateTime      @map("invoice_date") @db.Date
+  dueDate        DateTime?     @map("due_date") @db.Date
+  invoiceAmount  Decimal       @map("invoice_amount") @db.Decimal(15, 2)
+  taxAmount      Decimal       @default(0) @map("tax_amount") @db.Decimal(15, 2)
+  totalAmount    Decimal       @map("total_amount") @db.Decimal(15, 2)
+  status         InvoiceStatus @default(received)
+  matchVariance  Decimal       @default(0) @map("match_variance") @db.Decimal(15, 2)
+  note           String?       @db.Text
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+
+  goodsReceipt  GoodsReceipt  @relation(fields: [grId], references: [id])
+  purchaseOrder PurchaseOrder @relation(fields: [poId], references: [id])
+  supplier      Supplier      @relation(fields: [supplierId], references: [id])
+  creator       User?         @relation("InvoiceCreator", fields: [createdBy], references: [id])
+  payments      Payment[]
+
+  @@index([status])
+  @@map("invoices")
+}
+
+model Payment {
+  id            Int           @id @default(autoincrement())
+  invoiceId     Int           @map("invoice_id")
+  approvedBy    Int           @map("approved_by")
+  paymentNumber String        @unique @map("payment_number") @db.VarChar(20)
+  paymentDate   DateTime      @map("payment_date") @db.Date
+  paymentMethod PaymentMethod @default(bank_transfer) @map("payment_method")
+  amountPaid    Decimal       @map("amount_paid") @db.Decimal(15, 2)
+  bankRef       String?       @map("bank_ref") @db.VarChar(100)
+  note          String?       @db.Text
+  createdAt     DateTime      @default(now()) @map("created_at")
+
+  invoice  Invoice @relation(fields: [invoiceId], references: [id])
+  approver User    @relation("PaymentApprover", fields: [approvedBy], references: [id])
+
+  @@map("payments")
+}
+
+// ─── Notifications & Audit ────────────────────────────────────
+
+model Notification {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @map("user_id")
+  type      String   @db.VarChar(50)
+  title     String   @db.VarChar(200)
+  message   String?  @db.Text
+  refType   String?  @map("ref_type") @db.VarChar(20)
+  refId     Int?     @map("ref_id")
+  isRead    Boolean  @default(false) @map("is_read")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, isRead])
+  @@map("notifications")
+}
+
+model AuditLog {
+  id        Int         @id @default(autoincrement())
+  userId    Int         @map("user_id")
+  action    AuditAction
+  tableName String      @map("table_name") @db.VarChar(50)
+  recordId  Int         @map("record_id")
+  oldValues Json?       @map("old_values")
+  newValues Json?       @map("new_values")
+  ipAddress String?     @map("ip_address") @db.VarChar(45)
+  createdAt DateTime    @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([tableName, recordId])
+  @@map("audit_logs")
+}
+
+
+model SystemSettings {
+  id            Int      @id @default(1)
+  companyName   String   @default("ບໍລິສັດ") @map("company_name") @db.VarChar(200)
+  companyNameEn String?  @map("company_name_en") @db.VarChar(200)
+  logoUrl       String?  @map("logo_url") @db.VarChar(500)
+  phone         String?  @db.VarChar(50)
+  email         String?  @db.VarChar(100)
+  address       String?  @db.Text
+  taxId         String?  @map("tax_id") @db.VarChar(50)
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("system_settings")
+}
