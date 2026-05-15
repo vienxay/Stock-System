@@ -29,11 +29,19 @@ export default function BackupPage() {
   const qc = useQueryClient();
   const [dlLoading, setDlLoading] = useState<string | null>(null);
 
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['backup-summary'],
     queryFn:  () => backupApi.summary(),
-    staleTime: 30_000,
+    staleTime: 0,
   });
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try { await refetch(); }
+    finally { setIsRefreshing(false); }
+  };
   const bSum = (data?.data as { data: BackupSummary } | undefined)?.data;
 
   const saveNowMut = useMutation({
@@ -72,8 +80,9 @@ export default function BackupPage() {
           <p className="text-sm text-gray-500 mt-0.5">Export ຂໍ້ມູນທຸກຕາຕະລາງ — 3 ຮູບແບບ</p>
         </div>
         <div className="flex gap-2 flex-wrap">
-          <Button variant="secondary" onClick={() => refetch()}>
-            <RefreshCw className="w-4 h-4" />Refresh
+          <Button variant="secondary" loading={isRefreshing} onClick={handleRefresh}>
+            <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+            {isRefreshing ? 'ກຳລັງໂຫຼດ...' : 'Refresh'}
           </Button>
           <Button loading={saveNowMut.isPending} onClick={() => saveNowMut.mutate()}>
             <Database className="w-4 h-4" />Backup ດຽວນີ້ (ທັງ 3)
