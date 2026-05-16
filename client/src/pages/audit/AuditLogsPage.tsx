@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Shield, Search, Eye, Plus, Pencil, Trash2, RefreshCw } from 'lucide-react';
+import { Shield, Eye, Plus, Pencil, Trash2, RefreshCw } from 'lucide-react';
 import { auditApi } from '@/api/endpoints';
 import { Pagination } from '@/components/ui/Pagination';
 import type { PaginationMeta } from '@/types';
@@ -320,7 +320,7 @@ export default function AuditLogsPage() {
                     <td className="px-4 py-3 font-mono text-xs text-gray-600">#{log.recordId}</td>
                     <td className="px-4 py-3 font-mono text-xs text-gray-400">{log.ipAddress || '-'}</td>
                     <td className="px-4 py-3">
-                      {(log.oldValues || log.newValues) && (
+                      {(!!log.oldValues || !!log.newValues) && (
                         <button
                           onClick={() => setExpanded(expanded === log.id ? null : log.id)}
                           className="text-xs text-primary-600 hover:text-primary-700 font-medium"

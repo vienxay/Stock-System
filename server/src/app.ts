@@ -12,11 +12,20 @@ import { errorHandler } from './middlewares/errorMiddleware';
 
 const app = express();
 
-app.use(helmet());
+app.use(helmet({ contentSecurityPolicy: false }));  // disable CSP for demo
 app.use(cors({
-  origin:      env.ALLOWED_ORIGINS.split(','),
+  origin: (origin, cb) => {
+    // ອະນຸຍາດ ngrok, localhost, ແລະ origins ໃນ config
+    const allowed = env.ALLOWED_ORIGINS.split(',');
+    if (!origin || allowed.some((o) => origin.includes(o)) ||
+        /ngrok(-free)?\.app|ngrok\.io/.test(origin ?? '')) {
+      cb(null, true);
+    } else {
+      cb(null, true); // ສຳລັບ demo — allow all
+    }
+  },
   credentials: true,
-  methods:     ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
 }));
 const isDev = env.NODE_ENV === 'development';
 
@@ -50,7 +59,14 @@ app.get('/health', (_req, res) =>
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 app.use('/api/v1', routes);
 
-app.use((_req, res) => res.status(404).json({ success: false, message: 'Route not found' }));
+// ─── Serve frontend build (production / demo) ────────────────
+const clientDist = path.join(process.cwd(), '..', 'client', 'dist');
+if (require('fs').existsSync(clientDist)) {
+  app.use(express.static(clientDist));
+  app.get('*', (_req, res) => res.sendFile(path.join(clientDist, 'index.html')));
+} else {
+  app.use((_req, res) => res.status(404).json({ success: false, message: 'Route not found' }));
+}
 app.use(errorHandler);
 
 export default app;

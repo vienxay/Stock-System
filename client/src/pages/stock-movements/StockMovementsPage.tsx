@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, AlertTriangle, ArrowDownCircle, ArrowUpCircle, SlidersHorizontal, ScanLine } from 'lucide-react';
+import { Search, AlertTriangle, ArrowDownCircle, ArrowUpCircle, SlidersHorizontal, ScanLine } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { stockApi, productApi } from '@/api/endpoints';
 import { Table, type Column } from '@/components/ui/Table';

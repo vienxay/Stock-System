@@ -29,7 +29,6 @@ const PO_COLORS: Record<string, string> = {
   received:         '#10b981',
   cancelled:        '#d1d5db',
 };
-const CHART_PALETTE = ['#3b82f6','#10b981','#8b5cf6','#f59e0b','#ef4444','#06b6d4','#f97316','#84cc16'];
 
 // ─── KPI Card ─────────────────────────────────────────────────
 function KpiCard({ label, value, sub, icon: Icon, gradient, textColor }: {
@@ -154,7 +153,7 @@ export default function DashboardPage() {
     received:         'ຮັບຄົບ',
     cancelled:        'ຍົກເລີກ',
   };
-  const PO_STATUS_ALL = ['open', 'sent', 'partial_received', 'received', 'cancelled'];
+  const PO_STATUS_ALL: import('@/types').PoStatus[] = ['open', 'sent', 'partial_received', 'received', 'cancelled'];
   const poStatusMap   = new Map((d?.po ?? []).map((p) => [p.status, p._count.id]));
   const poStatusData  = PO_STATUS_ALL.map((s) => ({
     status: s,
@@ -170,12 +169,7 @@ export default function DashboardPage() {
     'ຈຳນວນ PO (ລ້ານ)': +(m.poAmount / 1_000_000).toFixed(2),
   }));
 
-  const prTotal    = d?.flow.pr    ?? 0;
-  const barPRData  = (d?.pr ?? []).map((p) => ({
-    name:  p.status.replace(/_/g, ' '),
-    count: p._count.id,
-    fill:  PR_COLORS[p.status] ?? '#94a3b8',
-  }));
+  const prTotal = d?.flow.pr ?? 0;
 
   return (
     <div className="space-y-5">
