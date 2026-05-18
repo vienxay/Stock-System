@@ -6,7 +6,8 @@ node_modules/
 # Build outputs
 dist/
 build/
-client/dist/
+# client/dist/ — ບໍ່ ignore ເພາະ Railway ຕ້ອງໃຊ້
+server/dist/
 
 # Environment files (sensitive)
 .env
