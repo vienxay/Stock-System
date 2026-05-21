@@ -14,6 +14,7 @@ const CategoriesPage       = lazy(() => import('@/pages/categories/CategoriesPag
 const SuppliersPage        = lazy(() => import('@/pages/suppliers/SuppliersPage'));
 const PurchaseRequestsPage = lazy(() => import('@/pages/purchase-requests/PurchaseRequestsPage'));
 const CreatePRPage         = lazy(() => import('@/pages/purchase-requests/CreatePRPage'));
+const EditPRPage           = lazy(() => import('@/pages/purchase-requests/EditPRPage'));
 const PRDetailPage         = lazy(() => import('@/pages/purchase-requests/PRDetailPage'));
 const PurchaseOrdersPage   = lazy(() => import('@/pages/purchase-orders/PurchaseOrdersPage'));
 const PODetailPage         = lazy(() => import('@/pages/purchase-orders/PODetailPage'));
@@ -122,6 +123,9 @@ export default function App() {
               } />
               <Route path="purchase-requests/new" element={
                 <RoleGuard roles={['admin', 'user', 'purchasing']}><CreatePRPage /></RoleGuard>
+              } />
+              <Route path="purchase-requests/:id/edit" element={
+                <RoleGuard roles={['admin', 'user', 'purchasing']}><EditPRPage /></RoleGuard>
               } />
               <Route path="purchase-requests/:id" element={
                 <RoleGuard roles={routeRoles['/purchase-requests']}><PRDetailPage /></RoleGuard>

@@ -8,34 +8,42 @@ import { auditLog } from './auditLogService';
 
 const isAdmin = (role: RoleCode) => role === RoleCode.admin;
 
+const EDITABLE_STATUSES: PrStatus[] = [
+  PrStatus.draft,
+  PrStatus.finance_rejected,
+  PrStatus.md_rejected,
+];
+
 class PurchaseRequestService {
+
+  private async buildItemsData(items: CreatePrDto['items'], tx: Prisma.TransactionClient) {
+    const productIds = items.map((i) => i.product_id);
+    const products   = await tx.product.findMany({ where: { id: { in: productIds }, isActive: true } });
+    if (products.length !== productIds.length) {
+      throw AppError.badRequest('ມີສິນຄ້າທີ່ບໍ່ພົບໃນລະບົບ');
+    }
+    const productMap = new Map(products.map((p) => [p.id, p]));
+    let totalAmount  = 0;
+    const itemsData  = items.map((item) => {
+      const product = productMap.get(item.product_id)!;
+      const price   = item.unit_price ?? Number(product.standardPrice);
+      totalAmount  += item.quantity * price;
+      return {
+        productId:  item.product_id,
+        supplierId: item.supplier_id ?? null,
+        quantity:   item.quantity,
+        unitPrice:  price,
+        note:       item.note ?? null,
+      };
+    });
+    return { itemsData, totalAmount };
+  }
 
   // ─── Create ────────────────────────────────────────────────
   async create(dto: CreatePrDto, requesterId: number) {
     return prisma.$transaction(async (tx) => {
       const prNumber = await generateRunningNumber('purchase_requests', 'PR', tx);
-
-      // ກວດ products ທັງໝົດ
-      const productIds = dto.items.map((i) => i.product_id);
-      const products   = await tx.product.findMany({ where: { id: { in: productIds }, isActive: true } });
-      if (products.length !== productIds.length) {
-        throw AppError.badRequest('ມີສິນຄ້າທີ່ບໍ່ພົບໃນລະບົບ');
-      }
-
-      const productMap = new Map(products.map((p) => [p.id, p]));
-      let totalAmount  = 0;
-      const itemsData  = dto.items.map((item) => {
-        const product  = productMap.get(item.product_id)!;
-        const price    = item.unit_price ?? Number(product.standardPrice);
-        totalAmount   += item.quantity * price;
-        return {
-          productId:  item.product_id,
-          supplierId: item.supplier_id ?? null,
-          quantity:   item.quantity,
-          unitPrice:  price,
-          note:       item.note ?? null,
-        };
-      });
+      const { itemsData, totalAmount } = await this.buildItemsData(dto.items, tx);
 
       return tx.purchaseRequest.create({
         data: {
@@ -167,23 +175,63 @@ class PurchaseRequestService {
             });
           }
         } else {
-          // Level 2 (MD) approved → auto-create PO
-          await tx.purchaseRequest.update({ where: { id: prId }, data: { status: PrStatus.md_approved } });
-          const po = await purchaseOrderService.createFromPR(prId, approverId, tx);
+          // Level 2 (MD) approved → create PO(s) per supplier
+          const result = await purchaseOrderService.createFromPR(prId, approverId, tx);
 
-          if (po) {
-            // ມີ supplier ຢ່າງໜ້ອຍ 1 item → PO ສ້າງສຳເລັດ
-            await tx.purchaseRequest.update({ where: { id: prId }, data: { status: PrStatus.po_created } });
-            auditLog(approverId, 'CREATE', 'purchase_orders', po.id, null, { poNumber: po.poNumber, status: po.status });
+          await tx.purchaseRequest.update({
+            where: { id: prId },
+            data:  { status: result.fullyCovered ? PrStatus.po_created : PrStatus.md_approved },
+          });
+
+          for (const po of result.newlyCreated) {
+            auditLog(approverId, 'CREATE', 'purchase_orders', po.id, null, {
+              poNumber: po.poNumber,
+              status:   po.status,
+            });
+          }
+
+          if (result.fullyCovered && result.purchaseOrders.length > 0) {
+            const poNumbers = result.purchaseOrders.map((p) => p.poNumber).join(', ');
+            const firstPoId   = result.purchaseOrders[0]!.id;
             await tx.notification.create({
               data: {
                 userId:  pr.requesterId,
                 type:    'pr_approved_po_created',
-                title:   `PR ${pr.prNumber} ອະນຸມັດ — PO ${po.poNumber} ສ້າງແລ້ວ`,
-                refType: 'PO', refId: po.id,
+                title:   `PR ${pr.prNumber} ອະນຸມັດ — PO ${poNumbers} ສ້າງແລ້ວ`,
+                refType: 'PO',
+                refId:   firstPoId,
               },
             });
-            // ແຈ້ງ purchasing ໃຫ້ດຳເນີນການ PO
+            const purchasingUsers = await tx.user.findMany({
+              where: { role: { code: RoleCode.purchasing }, isActive: true },
+            });
+            if (purchasingUsers.length > 0) {
+              await tx.notification.createMany({
+                data: purchasingUsers.flatMap((u) =>
+                  result.purchaseOrders.map((po) => ({
+                    userId:  u.id,
+                    type:    'po_created',
+                    title:   `PO ໃໝ່ ${po.poNumber} ລໍການດຳເນີນການ`,
+                    message: `ກະລຸນາຢືນຢັນ ແລະ ສົ່ງໃຫ້ Supplier`,
+                    refType: 'PO' as const,
+                    refId:   po.id,
+                  })),
+                ),
+              });
+            }
+          } else {
+            await tx.notification.create({
+              data: {
+                userId:  pr.requesterId,
+                type:    'pr_approved_no_supplier',
+                title:   `PR ${pr.prNumber} ອະນຸມັດແລ້ວ — ລໍການສ້າງ PO`,
+                message: result.newlyCreated.length > 0
+                  ? 'ຍັງມີລາຍການທີ່ບໍ່ມີ Supplier ຫຼື ຍັງບໍ່ຢູ່ໃນ PO — ຝ່າຍຈັດຊື້ຕ້ອງດຳເນີນການຕໍ່'
+                  : 'ກະລຸນາລະບຸ Supplier ໃຫ້ທຸກລາຍການ ແລ້ວສ້າງ PO',
+                refType: 'PR',
+                refId:   prId,
+              },
+            });
             const purchasingUsers = await tx.user.findMany({
               where: { role: { code: RoleCode.purchasing }, isActive: true },
             });
@@ -191,30 +239,135 @@ class PurchaseRequestService {
               await tx.notification.createMany({
                 data: purchasingUsers.map((u) => ({
                   userId:  u.id,
-                  type:    'po_created',
-                  title:   `PO ໃໝ່ ${po.poNumber} ລໍການດຳເນີນການ`,
-                  message: `ກະລຸນາຢືນຢັນ ແລະ ສົ່ງໃຫ້ Supplier`,
-                  refType: 'PO',
-                  refId:   po.id,
+                  type:    'pr_needs_po',
+                  title:   `PR ${pr.prNumber} ລໍສ້າງ PO`,
+                  message: 'ກະລຸນາລະບຸ Supplier ແລະສ້າງ PO ໃຫ້ຄົບ',
+                  refType: 'PR',
+                  refId:   prId,
                 })),
               });
             }
-          } else {
-            // ທຸກ items ບໍ່ມີ supplier → ຄ້າງທີ່ md_approved, ລໍ purchasing assign supplier
-            await tx.notification.create({
-              data: {
-                userId:  pr.requesterId,
-                type:    'pr_approved_no_supplier',
-                title:   `PR ${pr.prNumber} ອະນຸມັດແລ້ວ — ກະລຸນາລະບຸ Supplier ໃຫ້ທຸກລາຍການ`,
-                message: 'ຝ່າຍຈັດຊື້ຈະຕ້ອງລະບຸ Supplier ກ່ອນທີ່ຈະສ້າງ PO',
-                refType: 'PR', refId: prId,
-              },
-            });
           }
         }
       }
       return pr;
     });
+  }
+
+  // ─── Update (draft / rejected) ─────────────────────────────
+  async update(prId: number, dto: CreatePrDto, userId: number, userRole: RoleCode) {
+    const pr = await this.findOneOrThrow(prId);
+    if (!EDITABLE_STATUSES.includes(pr.status)) {
+      throw AppError.badRequest(`PR ບໍ່ສາມາດແກ້ໄຂໄດ້ (status: ${pr.status})`);
+    }
+    if (!isAdmin(userRole) && pr.requesterId !== userId) {
+      throw AppError.forbidden('ທ່ານບໍ່ແມ່ນເຈົ້າຂອງ PR');
+    }
+
+    return prisma.$transaction(async (tx) => {
+      const { itemsData, totalAmount } = await this.buildItemsData(dto.items, tx);
+      await tx.purchaseRequestItem.deleteMany({ where: { prId } });
+      return tx.purchaseRequest.update({
+        where: { id: prId },
+        data: {
+          department:   dto.department ?? null,
+          purpose:      dto.purpose ?? null,
+          priority:     dto.priority ?? 'normal',
+          requiredDate: dto.required_date ? new Date(dto.required_date) : null,
+          note:         dto.note ?? null,
+          totalAmount,
+          items:        { create: itemsData },
+        },
+        include: {
+          items: { include: { product: true, supplier: true } },
+          requester: { select: { fullName: true } },
+        },
+      });
+    });
+  }
+
+  // ─── Resubmit (rejected → finance_review) ──────────────────
+  async resubmit(prId: number, userId: number, userRole: RoleCode) {
+    const pr = await this.findOneOrThrow(prId);
+    if (!isAdmin(userRole) && pr.requesterId !== userId) {
+      throw AppError.forbidden('ທ່ານບໍ່ແມ່ນເຈົ້າຂອງ PR');
+    }
+    if (!['finance_rejected', 'md_rejected'].includes(pr.status)) {
+      throw AppError.badRequest('ສົ່ງໃໝ່ໄດ້ສະເພາະ PR ທີ່ຖືກປະຕິເສດ');
+    }
+
+    const [financeUser, mdUser] = await Promise.all([
+      prisma.user.findFirst({ where: { role: { code: RoleCode.finance }, isActive: true } }),
+      prisma.user.findFirst({ where: { role: { code: RoleCode.md },      isActive: true } }),
+    ]);
+    if (!financeUser) throw AppError.badRequest('ບໍ່ພົບ Finance user ໃນລະບົບ');
+    if (!mdUser)      throw AppError.badRequest('ບໍ່ພົບ MD user ໃນລະບົບ');
+
+    return prisma.$transaction(async (tx) => {
+      await tx.prApproval.deleteMany({ where: { prId } });
+      const updated = await tx.purchaseRequest.update({
+        where: { id: prId },
+        data:  { status: PrStatus.finance_review },
+      });
+      await tx.prApproval.createMany({
+        data: [
+          { prId, approverId: financeUser.id, level: 1, decision: 'pending' },
+          { prId, approverId: mdUser.id,      level: 2, decision: 'pending' },
+        ],
+      });
+      await tx.notification.create({
+        data: {
+          userId:  financeUser.id,
+          type:    'pr_resubmitted',
+          title:   `PR ສົ່ງໃໝ່: ${pr.prNumber}`,
+          message: `ຈຳນວນ ${pr.totalAmount} LAK`,
+          refType: 'PR',
+          refId:   prId,
+        },
+      });
+      return updated;
+    });
+  }
+
+  // ─── Manual PO creation + supplier per item ────────────────
+  async createPoFromPr(
+    prId: number,
+    userId: number,
+    itemSuppliers?: { pr_item_id: number; supplier_id: number }[],
+  ) {
+    const pr = await prisma.purchaseRequest.findUnique({
+      where: { id: prId }, include: { items: true },
+    });
+    if (!pr) throw AppError.notFound('ບໍ່ພົບ PR');
+    if (pr.status !== PrStatus.md_approved) {
+      throw AppError.badRequest(`PR ຕ້ອງຢູ່ໃນສະຖານະ md_approved (ປັດຈຸບັນ: ${pr.status})`);
+    }
+
+    if (itemSuppliers?.length) {
+      for (const row of itemSuppliers) {
+        const item = pr.items.find((i) => i.id === row.pr_item_id);
+        if (!item) throw AppError.badRequest(`ບໍ່ພົບ PR item ID: ${row.pr_item_id}`);
+        await prisma.purchaseRequestItem.update({
+          where: { id: row.pr_item_id },
+          data:  { supplierId: row.supplier_id },
+        });
+      }
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      const created = await purchaseOrderService.createFromPR(prId, userId, tx);
+      await tx.purchaseRequest.update({
+        where: { id: prId },
+        data:  { status: created.fullyCovered ? PrStatus.po_created : PrStatus.md_approved },
+      });
+      return created;
+    });
+
+    if (result.newlyCreated.length === 0 && !result.fullyCovered) {
+      throw AppError.badRequest('ບໍ່ສາມາດສ້າງ PO ໄດ້ — ກະລຸນາລະບຸ Supplier ໃຫ້ທຸກລາຍການ');
+    }
+
+    return result;
   }
 
   // ─── Cancel ────────────────────────────────────────────────
@@ -267,14 +420,20 @@ class PurchaseRequestService {
     const pr = await prisma.purchaseRequest.findUnique({
       where:   { id },
       include: {
-        requester:    { select: { fullName: true, department: true } },
-        items:        { include: { product: { include: { unit: true } }, supplier: true } },
-        approvals:    { include: { approver: { select: { fullName: true } } }, orderBy: { level: 'asc' } },
-        purchaseOrder: { select: { id: true, poNumber: true, status: true } },
+        requester: { select: { id: true, fullName: true, department: true } },
+        items:     { include: { product: { include: { unit: true } }, supplier: true } },
+        approvals: { include: { approver: { select: { fullName: true } } }, orderBy: { level: 'asc' } },
       },
     });
     if (!pr) throw AppError.notFound('ບໍ່ພົບ PR');
-    return pr;
+
+    const purchaseOrders = await prisma.purchaseOrder.findMany({
+      where:   { prId: id },
+      select:  { id: true, poNumber: true, status: true },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    return { ...pr, purchaseOrders };
   }
 
   private async findOneOrThrow(id: number, tx?: Prisma.TransactionClient) {

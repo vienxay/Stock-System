@@ -57,13 +57,26 @@ export interface PurchaseOrder {
   supplier: { name: string; phone?: string };
   creator: { fullName: string };
 }
+export interface Payment {
+  id: number; paymentNumber: string; paymentDate: string;
+  amountPaid: number; paymentMethod: string; bankRef?: string;
+}
+
 export interface Invoice {
   id: number; invoiceNumber: string; status: InvoiceStatus;
   invoiceAmount: number; totalAmount: number; taxAmount: number;
   matchVariance: number; invoiceDate: string; dueDate?: string; createdAt: string;
+  amountPaid?: number; amountRemaining?: number;
   supplier: { name: string };
   purchaseOrder: { poNumber: string };
   goodsReceipt: { grNumber: string };
+  payments?: Payment[];
+}
+
+export interface PendingTask {
+  type: string; title: string; message: string;
+  count: number; refType: string; refId: number;
+  href: string; priority: 'high' | 'normal';
 }
 export interface StockMovement {
   id: number; movementType: MovementType; quantity: number;

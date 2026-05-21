@@ -45,4 +45,12 @@ router.post('/:id/receive',
   validate,
   asAuth(purchaseOrderController.receiveGoods));
 
+router.patch('/:id/cancel',
+  authorize('purchasing', 'admin'),
+  asAuth(purchaseOrderController.cancelPo));
+
+router.delete('/:poId/gr/:grId',
+  authorize('stock', 'admin'),
+  asAuth(purchaseOrderController.cancelGr));
+
 export default router;

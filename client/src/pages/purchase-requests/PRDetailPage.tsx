@@ -1,7 +1,7 @@
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
-import { ArrowLeft, Send, XCircle, CheckCircle, XOctagon, ShoppingCart } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { ArrowLeft, Send, XCircle, CheckCircle, XOctagon, ShoppingCart, Pencil, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { prApi, supplierApi } from '@/api/endpoints';
 import { Button } from '@/components/ui/Button';
@@ -14,17 +14,18 @@ interface PRDetail {
   id: number; prNumber: string; status: string; priority: string;
   department?: string; purpose?: string; note?: string;
   requiredDate?: string; totalAmount: number; createdAt: string;
-  requester: { fullName: string; department?: string };
+  requester: { id: number; fullName: string; department?: string };
   items: {
     id: number; quantity: number; unitPrice: number; note?: string;
     product: { code: string; nameLo: string; unit: { nameLo: string } };
-    supplier?: { name: string };
+    supplier?: { id: number; name: string } | null;
+    supplierId?: number | null;
   }[];
   approvals: {
     id: number; level: number; decision: string; comment?: string; actedAt?: string;
     approver: { fullName: string };
   }[];
-  purchaseOrder?: { id: number; poNumber: string; status: string };
+  purchaseOrders?: { id: number; poNumber: string; status: string }[];
 }
 
 const priorities: Record<string, string> = { low: 'ນ້ອຍ', normal: 'ປົກກະຕິ', high: 'ສູງ', urgent: 'ດ່ວນ' };
@@ -35,7 +36,7 @@ export default function PRDetailPage() {
   const qc       = useQueryClient();
   const user     = useAuthStore((s) => s.user);
   const [createPoOpen, setCreatePoOpen] = useState(false);
-  const [selectedSupplier, setSelectedSupplier] = useState('');
+  const [itemSuppliers, setItemSuppliers] = useState<Record<number, string>>({});
 
   const { data, isLoading } = useQuery({
     queryKey: ['pr', id],
@@ -75,12 +76,26 @@ export default function PRDetailPage() {
       toast.error(e?.response?.data?.message ?? 'ເກີດຂໍ້ຜິດພາດ'),
   });
 
+  const resubmitMut = useMutation({
+    mutationFn: () => prApi.resubmit(Number(id)),
+    onSuccess:  () => { toast.success('ສົ່ງ PR ໃໝ່ສຳເລັດ'); invalidate(); qc.invalidateQueries({ queryKey: ['pr', id] }); },
+    onError:    (e: { response?: { data?: { message?: string } } }) =>
+      toast.error(e?.response?.data?.message ?? 'ເກີດຂໍ້ຜິດພາດ'),
+  });
+
   const createPoMut = useMutation({
-    mutationFn: () => prApi.createPO(Number(id), Number(selectedSupplier)),
+    mutationFn: () => {
+      if (!pr) throw new Error('ບໍ່ພົບ PR');
+      return prApi.createPO(Number(id), pr.items.map((item) => ({
+        pr_item_id:   item.id,
+        supplier_id:  Number(itemSuppliers[item.id]),
+      })));
+    },
     onSuccess: (res) => {
-      const po = (res.data as { data: { poNumber: string } }).data;
-      toast.success(`ສ້າງ ${po.poNumber} ສຳເລັດ`);
+      const pos = (res.data as { data: { poNumber: string }[] }).data;
+      toast.success(`ສ້າງ PO: ${pos.map((p) => p.poNumber).join(', ')}`);
       invalidate();
+      qc.invalidateQueries({ queryKey: ['pr', id] });
       qc.invalidateQueries({ queryKey: ['po'] });
       setCreatePoOpen(false);
     },
@@ -88,18 +103,33 @@ export default function PRDetailPage() {
       toast.error(e?.response?.data?.message ?? 'ເກີດຂໍ້ຜິດພາດ'),
   });
 
+  useEffect(() => {
+    if (!createPoOpen || !pr) return;
+    const init: Record<number, string> = {};
+    pr.items.forEach((item) => {
+      init[item.id] = item.supplierId ? String(item.supplierId) : item.supplier?.id ? String(item.supplier.id) : '';
+    });
+    setItemSuppliers(init);
+  }, [createPoOpen, pr]);
+
   const role      = user?.role.code ?? '';
   const isAdmin   = role === 'admin';
 
   const canSubmit   = pr?.status === 'draft'
-    && (isAdmin || pr.requester.fullName === user?.fullName);
+    && (isAdmin || pr.requester.id === user?.id);
   const canCancel   = ['draft', 'finance_review', 'md_review'].includes(pr?.status ?? '')
-    && (isAdmin || pr?.requester.fullName === user?.fullName);
+    && (isAdmin || pr?.requester.id === user?.id);
   const canApprove  =
     (role === 'finance' && pr?.status === 'finance_review') ||
     (role === 'md'      && pr?.status === 'md_review')      ||
     (isAdmin && ['finance_review', 'md_review'].includes(pr?.status ?? ''));
   const canCreatePO = pr?.status === 'md_approved' && ['purchasing', 'admin'].includes(role);
+  const canEdit = ['draft', 'finance_rejected', 'md_rejected'].includes(pr?.status ?? '')
+    && (isAdmin || pr?.requester.id === user?.id);
+  const canResubmit = ['finance_rejected', 'md_rejected'].includes(pr?.status ?? '')
+    && (isAdmin || pr?.requester.id === user?.id);
+  const allSuppliersSet = pr?.items.every((i) => itemSuppliers[i.id]) ?? false;
+  const lastReject = pr?.approvals.find((a) => a.decision === 'rejected');
 
   if (isLoading) return (
     <div className="flex items-center justify-center py-20 text-gray-400">ກຳລັງໂຫຼດ...</div>
@@ -130,13 +160,23 @@ export default function PRDetailPage() {
 
         {/* Actions */}
         <div className="flex gap-2 flex-wrap">
+          {canEdit && (
+            <Button variant="secondary" onClick={() => navigate(`/purchase-requests/${id}/edit`)}>
+              <Pencil className="w-4 h-4" />ແກ້ໄຂ
+            </Button>
+          )}
           {canSubmit && (
             <Button loading={submitMut.isPending} onClick={() => submitMut.mutate()}>
               <Send className="w-4 h-4" />ສົ່ງເພື່ອອະນຸມັດ
             </Button>
           )}
+          {canResubmit && (
+            <Button loading={resubmitMut.isPending} onClick={() => resubmitMut.mutate()}>
+              <RefreshCw className="w-4 h-4" />ສົ່ງໃໝ່
+            </Button>
+          )}
           {canCreatePO && (
-            <Button onClick={() => { setSelectedSupplier(''); setCreatePoOpen(true); }}>
+            <Button onClick={() => setCreatePoOpen(true)}>
               <ShoppingCart className="w-4 h-4" />ສ້າງ PO
             </Button>
           )}
@@ -161,15 +201,28 @@ export default function PRDetailPage() {
         </div>
       </div>
 
+      {lastReject && ['finance_rejected', 'md_rejected'].includes(pr.status) && (
+        <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-800">
+          <p className="font-semibold">ຖືກປະຕິເສດ ({lastReject.level === 1 ? 'Finance' : 'MD'})</p>
+          {lastReject.comment && <p className="mt-1 italic">"{lastReject.comment}"</p>}
+          <p className="text-xs mt-2 text-red-600">ແກ້ໄຂ PR ແລ້ວກົດ "ສົ່ງໃໝ່"</p>
+        </div>
+      )}
+
       {/* PO created notice */}
-      {pr.purchaseOrder && (
-        <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 text-sm text-green-800 flex items-center gap-2">
+      {(pr.purchaseOrders?.length ?? 0) > 0 && (
+        <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 text-sm text-green-800 flex flex-wrap items-center gap-2">
           <CheckCircle className="w-4 h-4 text-green-600 shrink-0" />
-          ສ້າງ PO ແລ້ວ:
-          <button onClick={() => navigate(`/purchase-orders/${pr.purchaseOrder!.id}`)}
-            className="font-mono font-bold underline hover:text-green-900">
-            {pr.purchaseOrder.poNumber}
-          </button>
+          <span>PO:</span>
+          {pr.purchaseOrders!.map((po, i) => (
+            <span key={po.id} className="inline-flex items-center gap-1">
+              {i > 0 && <span className="text-green-600">·</span>}
+              <button onClick={() => navigate(`/purchase-orders/${po.id}`)}
+                className="font-mono font-bold underline hover:text-green-900">
+                {po.poNumber}
+              </button>
+            </span>
+          ))}
         </div>
       )}
 
@@ -272,34 +325,29 @@ export default function PRDetailPage() {
       </div>
 
       {/* ─── Create PO Modal ─── */}
-      <Modal open={createPoOpen} onClose={() => setCreatePoOpen(false)} title="ສ້າງ PO ຈາກ PR ນີ້" size="sm">
+      <Modal open={createPoOpen} onClose={() => setCreatePoOpen(false)} title="ສ້າງ PO ຈາກ PR ນີ້" size="md">
         <div className="space-y-4">
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm text-yellow-800">
-            PR ນີ້ອະນຸມັດແລ້ວ ແຕ່ items ບໍ່ມີ Supplier — ກະລຸນາເລືອກ Supplier ສຳລັບທຸກລາຍການ
+            ລະບຸ Supplier ແຕ່ລະລາຍການ — ລະບົບຈະສ້າງ PO ແຍກຕາມ Supplier ອັດຕະໂນມັດ
           </div>
 
-          <div>
-            <label className="label">Supplier <span className="text-red-500">*</span></label>
-            <select
-              value={selectedSupplier}
-              onChange={(e) => setSelectedSupplier(e.target.value)}
-              className="input"
-            >
-              <option value="">-- ເລືອກ Supplier --</option>
-              {suppliers.map((s) => (
-                <option key={s.id} value={String(s.id)}>{s.name}</option>
-              ))}
-            </select>
-            <p className="text-xs text-gray-400 mt-1">Supplier ນີ້ຈະຖືກກຳນົດໃຫ້ທຸກລາຍການໃນ PO</p>
-          </div>
-
-          {/* Items preview */}
-          <div className="border border-gray-200 rounded-lg overflow-hidden">
-            <div className="bg-gray-50 px-3 py-2 text-xs font-semibold text-gray-500">ລາຍການທີ່ຈະໃສ່ PO</div>
+          <div className="border border-gray-200 rounded-lg overflow-hidden divide-y divide-gray-100">
             {pr.items.map((item) => (
-              <div key={item.id} className="px-3 py-2 border-t border-gray-100 text-sm flex justify-between">
-                <span>{item.product.nameLo}</span>
-                <span className="text-gray-500">{item.quantity.toLocaleString()} {item.product.unit.nameLo}</span>
+              <div key={item.id} className="p-3 bg-gray-50 space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="font-medium">{item.product.nameLo}</span>
+                  <span className="text-gray-500">{item.quantity} {item.product.unit.nameLo}</span>
+                </div>
+                <select
+                  value={itemSuppliers[item.id] ?? ''}
+                  onChange={(e) => setItemSuppliers((p) => ({ ...p, [item.id]: e.target.value }))}
+                  className="input text-sm"
+                >
+                  <option value="">-- ເລືອກ Supplier --</option>
+                  {suppliers.map((s) => (
+                    <option key={s.id} value={String(s.id)}>{s.name}</option>
+                  ))}
+                </select>
               </div>
             ))}
           </div>
@@ -307,7 +355,7 @@ export default function PRDetailPage() {
           <div className="flex gap-2 justify-end pt-1 border-t border-gray-100">
             <Button variant="secondary" onClick={() => setCreatePoOpen(false)}>ຍົກເລີກ</Button>
             <Button
-              disabled={!selectedSupplier}
+              disabled={!allSuppliersSet}
               loading={createPoMut.isPending}
               onClick={() => createPoMut.mutate()}
             >

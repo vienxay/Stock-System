@@ -246,7 +246,7 @@ model PurchaseRequest {
   requester     User                  @relation("Requester", fields: [requesterId], references: [id])
   items         PurchaseRequestItem[]
   approvals     PrApproval[]
-  purchaseOrder PurchaseOrder?
+  purchaseOrders PurchaseOrder[]
 
   @@index([status])
   @@index([requesterId])
@@ -293,7 +293,7 @@ model PrApproval {
 
 model PurchaseOrder {
   id              Int       @id @default(autoincrement())
-  prId            Int       @unique @map("pr_id")
+  prId            Int       @map("pr_id")
   supplierId      Int       @map("supplier_id")
   createdBy       Int       @map("created_by")
   poNumber        String    @unique @map("po_number") @db.VarChar(20)
@@ -315,6 +315,7 @@ model PurchaseOrder {
   invoices        Invoice[]
 
   @@index([status])
+  @@index([prId])
   @@map("purchase_orders")
 }
 

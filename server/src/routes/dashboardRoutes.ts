@@ -2,6 +2,8 @@ import { Router }       from 'express';
 import { prisma }       from '../config/prisma';
 import { ApiResponse }  from '../utils/ApiResponse';
 import { authenticate } from '../middlewares/authMiddleware';
+import { AuthRequest }  from '../types';
+import { dashboardTasksService } from '../services/dashboardTasksService';
 
 const router = Router();
 router.use(authenticate);
@@ -95,6 +97,12 @@ router.get('/summary', async (_req, res) => {
     lowStockItems,
     flow: { pr: prTotal, po: poTotal, gr: grTotal, invoice: invoiceTotal, paid: paidTotal },
   });
+});
+
+router.get('/tasks', async (req, res) => {
+  const user = (req as AuthRequest).user;
+  const tasks = await dashboardTasksService.getPendingTasks(user.role.code, user.id);
+  ApiResponse.success(res, tasks);
 });
 
 export default router;

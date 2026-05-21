@@ -9,6 +9,7 @@ import {
   Banknote, CalendarDays, Clock, BadgeCheck,
 } from 'lucide-react';
 import { dashboardApi } from '@/api/endpoints';
+import { PendingTasksPanel } from '@/components/dashboard/PendingTasksPanel';
 import type { DashboardSummary } from '@/types';
 
 // ─── Colour palettes ──────────────────────────────────────────
@@ -184,6 +185,8 @@ export default function DashboardPage() {
           ອັບເດດທຸກ 60 ວິ
         </span>
       </div>
+
+      <PendingTasksPanel />
 
       {/* ─── KPI Cards ─────────────────────────────────────── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">

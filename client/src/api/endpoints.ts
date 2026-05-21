@@ -3,7 +3,7 @@ import { useAuthStore } from '@/stores/authStore';
 import type {
   LoginResponse, Product, Category, Supplier,
   PurchaseRequest, PurchaseOrder, Invoice, StockMovement,
-  Notification, DashboardSummary,
+  Notification,   DashboardSummary, PendingTask,
 } from '@/types';
 
 // ─── Auth ────────────────────────────────────────────────────
@@ -19,6 +19,7 @@ export const authApi = {
 // ─── Dashboard ───────────────────────────────────────────────
 export const dashboardApi = {
   summary: () => api.get<{ data: DashboardSummary }>('/dashboard/summary'),
+  tasks:   () => api.get<{ data: PendingTask[] }>('/dashboard/tasks'),
 };
 
 // ─── Products ────────────────────────────────────────────────
@@ -50,11 +51,14 @@ export const supplierApi = {
 export const prApi = {
   list:    (params?: object) => api.get<{ data: PurchaseRequest[] }>('/purchase-requests', { params }),
   get:     (id: number)      => api.get(`/purchase-requests/${id}`),
-  create:  (body: object)    => api.post('/purchase-requests', body),
-  submit:  (id: number)      => api.patch(`/purchase-requests/${id}/submit`),
-  cancel:  (id: number)      => api.patch(`/purchase-requests/${id}/cancel`),
+  create:   (body: object) => api.post('/purchase-requests', body),
+  update:   (id: number, body: object) => api.put(`/purchase-requests/${id}`, body),
+  submit:   (id: number) => api.patch(`/purchase-requests/${id}/submit`),
+  resubmit: (id: number) => api.patch(`/purchase-requests/${id}/resubmit`),
+  cancel:   (id: number) => api.patch(`/purchase-requests/${id}/cancel`),
   approve:  (id: number, body: object) => api.patch(`/purchase-requests/${id}/approve`, body),
-  createPO: (id: number, supplier_id: number) => api.post(`/purchase-requests/${id}/create-po`, { supplier_id }),
+  createPO:  (id: number, items: { pr_item_id: number; supplier_id: number }[]) =>
+    api.post(`/purchase-requests/${id}/create-po`, { items }),
 };
 
 // ─── Purchase Orders ─────────────────────────────────────────
@@ -63,6 +67,8 @@ export const poApi = {
   get:          (id: number)      => api.get(`/purchase-orders/${id}`),
   markSent:     (id: number)      => api.patch(`/purchase-orders/${id}/send`),
   receiveGoods: (id: number, body: object) => api.post(`/purchase-orders/${id}/receive`, body),
+  cancel:       (id: number)      => api.patch(`/purchase-orders/${id}/cancel`),
+  cancelGr:     (poId: number, grId: number) => api.delete(`/purchase-orders/${poId}/gr/${grId}`),
   needsInvoice: ()                => api.get('/purchase-orders/needs-invoice'),
 };
 

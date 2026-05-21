@@ -258,14 +258,22 @@ export default function InvoicesPage() {
           </button>
         </div>
       );
-      if (r.status === 'approved' && canManage) return (
-        <button
-          onClick={() => { setPayTarget(r); setPayForm({ ...defaultPay, amount_paid: String(r.totalAmount) }); setPayOpen(true); }}
-          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-primary-600 hover:bg-primary-700 text-white transition-colors"
-        >
-          <CreditCard className="w-3.5 h-3.5" />ຊຳລະ
-        </button>
-      );
+      if (r.status === 'approved' && canManage) {
+        const remaining = r.amountRemaining ?? Number(r.totalAmount) - (r.amountPaid ?? 0);
+        return (
+          <button
+            onClick={() => {
+              setPayTarget(r);
+              setPayForm({ ...defaultPay, amount_paid: String(remaining) });
+              setPayOpen(true);
+            }}
+            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-primary-600 hover:bg-primary-700 text-white transition-colors"
+          >
+            <CreditCard className="w-3.5 h-3.5" />
+            {remaining < Number(r.totalAmount) ? `ຊຳລະ (${remaining.toLocaleString()}₭)` : 'ຊຳລະ'}
+          </button>
+        );
+      }
       return null;
     }},
   ];
@@ -510,6 +518,15 @@ export default function InvoicesPage() {
       {/* ─── Pay Modal ─── */}
       <Modal open={payOpen} onClose={() => setPayOpen(false)} title={`ຊຳລະ ${payTarget?.invoiceNumber ?? ''}`} size="md">
         <div className="space-y-4">
+          {payTarget && (
+            <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
+              <p>ຍອດລວມ: <strong>{Number(payTarget.totalAmount).toLocaleString()} ₭</strong></p>
+              {(payTarget.amountPaid ?? 0) > 0 && (
+                <p>ຊຳລະແລ້ວ: {Number(payTarget.amountPaid).toLocaleString()} ₭ ·
+                  ຄ້າງ: {Number(payTarget.amountRemaining ?? 0).toLocaleString()} ₭</p>
+              )}
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="label">ວັນທີຊຳລະ *</label>

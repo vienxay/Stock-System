@@ -17,4 +17,10 @@ export const purchaseOrderController = {
   async receiveGoods(req: AuthRequest, res: Response) {
     ApiResponse.created(res, await purchaseOrderService.receiveGoods(Number(req.params.id), req.body as ReceiveGoodsDto, req.user.id), 'ຮັບຂອງ GR ສຳເລັດ');
   },
+  async cancelPo(req: AuthRequest, res: Response) {
+    ApiResponse.success(res, await purchaseOrderService.cancelPo(Number(req.params.id), req.user.id), 'ຍົກເລີກ PO ສຳເລັດ');
+  },
+  async cancelGr(req: AuthRequest, res: Response) {
+    ApiResponse.success(res, await purchaseOrderService.cancelGoodsReceipt(Number(req.params.grId), req.user.id), 'ຍົກເລີກ GR ສຳເລັດ');
+  },
 };

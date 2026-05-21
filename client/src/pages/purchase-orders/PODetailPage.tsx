@@ -1,7 +1,7 @@
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { ArrowLeft, Send, PackageCheck, CheckCircle, Printer, AlertTriangle, AlertCircle, Receipt } from 'lucide-react';
+import { ArrowLeft, Send, PackageCheck, CheckCircle, Printer, AlertTriangle, AlertCircle, Receipt, XCircle, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { poApi, settingsApi } from '@/api/endpoints';
 import { buildPOPrintHtml } from './poPrintTemplate';
@@ -17,8 +17,9 @@ interface POItem {
 }
 interface GR {
   id: number; grNumber: string; status: string; receivedDate: string; note?: string;
+  // status: completed | rejected
   receiver: { fullName: string };
-  items: { id: number; orderedQty: number; receivedQty: number; rejectedQty: number; note?: string; }[];
+  items: { id: number; poItemId: number; orderedQty: number; receivedQty: number; rejectedQty: number; note?: string; }[];
 }
 interface POInvoice {
   id: number; invoiceNumber: string; status: string; totalAmount: number;
@@ -109,9 +110,27 @@ export default function PODetailPage() {
     setItems((prev) => prev.map((item, i) => i === idx ? { ...item, [field]: value } : item));
   };
 
+  const cancelPoMut = useMutation({
+    mutationFn: () => poApi.cancel(Number(id)),
+    onSuccess:  () => { toast.success('ຍົກເລີກ PO ສຳເລັດ'); qc.invalidateQueries({ queryKey: ['po', id] }); navigate('/purchase-orders'); },
+    onError:    (e: { response?: { data?: { message?: string } } }) =>
+      toast.error(e?.response?.data?.message ?? 'ເກີດຂໍ້ຜິດພາດ'),
+  });
+
+  const cancelGrMut = useMutation({
+    mutationFn: (grId: number) => poApi.cancelGr(Number(id), grId),
+    onSuccess:  () => { toast.success('ຍົກເລີກ GR ສຳເລັດ'); qc.invalidateQueries({ queryKey: ['po', id] }); qc.invalidateQueries({ queryKey: ['products'] }); },
+    onError:    (e: { response?: { data?: { message?: string } } }) =>
+      toast.error(e?.response?.data?.message ?? 'ເກີດຂໍ້ຜິດພາດ'),
+  });
+
   const canSend    = po?.status === 'open'  && ['purchasing', 'admin'].includes(user?.role.code ?? '');
-  const canReceive = ['sent', 'open', 'partial_received'].includes(po?.status ?? '')
+  const canCancelPo = ['open', 'sent'].includes(po?.status ?? '')
+                    && (po?.goodsReceipts?.length ?? 0) === 0
+                    && ['purchasing', 'admin'].includes(user?.role.code ?? '');
+  const canReceive = ['sent', 'partial_received'].includes(po?.status ?? '')
                    && ['stock', 'admin'].includes(user?.role.code ?? '');
+  const canCancelGr = ['stock', 'admin'].includes(user?.role.code ?? '');
 
   // ─── fetch settings for company info ───────────────────────
   const { data: settingsData } = useQuery({
@@ -170,6 +189,12 @@ export default function PODetailPage() {
           {canReceive && (
             <Button onClick={openGR}>
               <PackageCheck className="w-4 h-4" />ຮັບສິນຄ້າ (GR)
+            </Button>
+          )}
+          {canCancelPo && (
+            <Button variant="danger" loading={cancelPoMut.isPending}
+              onClick={() => { if (confirm('ຢືນຢັນຍົກເລີກ PO?')) cancelPoMut.mutate(); }}>
+              <XCircle className="w-4 h-4" />ຍົກເລີກ PO
             </Button>
           )}
         </div>
@@ -313,14 +338,32 @@ export default function PODetailPage() {
               </h3>
               <div className="space-y-3">
                 {po.goodsReceipts.map((gr) => (
-                  <div key={gr.id} className="border border-gray-200 rounded-lg p-3 bg-green-50">
-                    <div className="flex items-center justify-between mb-2">
+                  <div key={gr.id} className={`border rounded-lg p-3 ${gr.status === 'rejected' ? 'border-gray-200 bg-gray-100' : 'border-gray-200 bg-green-50'}`}>
+                    <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
                       <div className="flex items-center gap-2">
-                        <CheckCircle className="w-4 h-4 text-green-600" />
-                        <span className="font-mono font-semibold text-green-700">{gr.grNumber}</span>
+                        {gr.status === 'rejected'
+                          ? <XCircle className="w-4 h-4 text-gray-500" />
+                          : <CheckCircle className="w-4 h-4 text-green-600" />}
+                        <span className={`font-mono font-semibold ${gr.status === 'rejected' ? 'text-gray-600 line-through' : 'text-green-700'}`}>
+                          {gr.grNumber}
+                        </span>
+                        {gr.status === 'rejected' && <span className="text-xs text-gray-500">(ຍົກເລີກ)</span>}
                       </div>
-                      <div className="text-xs text-gray-500">
-                        {new Date(gr.receivedDate).toLocaleDateString('lo-LA')} · {gr.receiver.fullName}
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-gray-500">
+                          {new Date(gr.receivedDate).toLocaleDateString('lo-LA')} · {gr.receiver.fullName}
+                        </span>
+                        {canCancelGr && gr.status !== 'rejected' && (
+                          <button
+                            type="button"
+                            title="ຍົກເລີກ GR"
+                            disabled={cancelGrMut.isPending}
+                            onClick={() => { if (confirm(`ຍົກເລີກ ${gr.grNumber}? Stock ຈະຖືກຫັກຄືນ`)) cancelGrMut.mutate(gr.id); }}
+                            className="p-1.5 rounded-lg text-red-500 hover:bg-red-50"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
                       </div>
                     </div>
                     <div className="overflow-x-auto">
@@ -334,7 +377,7 @@ export default function PODetailPage() {
                         </thead>
                         <tbody>
                           {(gr.items ?? []).map((gi) => {
-                            const poItem = po.items.find((p) => p.id === gi.id);
+                            const poItem = po.items.find((p) => p.id === gi.poItemId);
                             return (
                               <tr key={gi.id}>
                                 <td className="px-2 py-1">{poItem?.product.nameLo ?? '-'}</td>

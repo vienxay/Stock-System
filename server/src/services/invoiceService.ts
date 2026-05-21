@@ -5,16 +5,36 @@ import { generateRunningNumber, buildPaginationMeta } from '../utils/runningNumb
 import { CreateInvoiceDto, CreatePaymentDto } from '../types';
 import { env } from '../config/env';
 import { auditLog } from './auditLogService';
+import { computeGrAmount, evaluateInvoiceMatch } from '../utils/invoiceMatch';
+
+type Tx = Prisma.TransactionClient;
 
 class InvoiceService {
 
+  private async loadMatchAmounts(poId: number, grId: number, tx: Tx) {
+    const po = await (tx as typeof prisma).purchaseOrder.findUniqueOrThrow({ where: { id: poId } });
+    const gr = await (tx as typeof prisma).goodsReceipt.findUniqueOrThrow({
+      where:   { id: grId },
+      include: { items: { include: { poItem: true } } },
+    });
+    if (gr.poId !== poId) throw AppError.badRequest('GR ບໍ່ກັບ PO ນີ້');
+
+    const poAmount = Number(po.totalAmount);
+    const grAmount = computeGrAmount(gr.items);
+    return { poAmount, grAmount };
+  }
+
   async create(dto: CreateInvoiceDto, createdBy: number) {
     const invoice = await prisma.$transaction(async (tx) => {
-      const po = await (tx as typeof prisma).purchaseOrder.findUniqueOrThrow({ where: { id: dto.po_id } });
-      const tolerance  = Number(po.totalAmount) * (env.INVOICE_MATCH_TOLERANCE_PERCENT / 100);
-      const variance   = Number(dto.invoice_amount) - Number(po.totalAmount);
-      const isMatched  = Math.abs(variance) <= tolerance;
-      const taxAmount  = dto.tax_amount ?? 0;
+      const { poAmount, grAmount } = await this.loadMatchAmounts(dto.po_id, dto.gr_id, tx);
+      const { isMatched, variance } = evaluateInvoiceMatch(
+        Number(dto.invoice_amount),
+        poAmount,
+        grAmount,
+        env.INVOICE_MATCH_TOLERANCE_PERCENT,
+      );
+      const taxAmount = dto.tax_amount ?? 0;
+      const po        = await (tx as typeof prisma).purchaseOrder.findUniqueOrThrow({ where: { id: dto.po_id } });
 
       const inv = await (tx as typeof prisma).invoice.create({
         data: {
@@ -35,15 +55,14 @@ class InvoiceService {
         await (tx as typeof prisma).notification.create({
           data: {
             userId:  createdBy, type: 'invoice_mismatch',
-            title:   `Invoice ${dto.invoice_number} ຈຳນວນບໍ່ກົງ PO`,
-            message: `ຜົນຕ່າງ ${variance.toFixed(2)} LAK (>${env.INVOICE_MATCH_TOLERANCE_PERCENT}%)`,
+            title:   `Invoice ${dto.invoice_number} ຈຳນວນບໍ່ກົງ PO/GR`,
+            message: `PO ${poAmount.toLocaleString()} / GR ${grAmount.toLocaleString()} / Invoice ${Number(dto.invoice_amount).toLocaleString()} LAK (±${env.INVOICE_MATCH_TOLERANCE_PERCENT}%)`,
             refType: 'INVOICE', refId: inv.id,
           },
         });
       }
       return inv;
     });
-    // audit ຫຼັງ transaction commit — ຈຶ່ງບໍ່ orphan ຖ້າ rollback
     auditLog(createdBy, 'CREATE', 'invoices', invoice.id, null, {
       invoiceNumber: invoice.invoiceNumber,
       invoiceAmount: Number(invoice.invoiceAmount),
@@ -61,19 +80,23 @@ class InvoiceService {
     return updated;
   }
 
-  // ─── ແກ້ໄຂຈຳນວນ Invoice (mismatch → re-match) ──────────────
   async updateAmount(id: number, newAmount: number, note: string | undefined, userId: number) {
     return prisma.$transaction(async (tx) => {
       const inv = await (tx as typeof prisma).invoice.findUnique({
-        where: { id }, include: { purchaseOrder: { select: { totalAmount: true } } },
+        where: { id },
       });
       if (!inv) throw AppError.notFound('ບໍ່ພົບ Invoice');
-      if (!['mismatch', 'received'].includes(inv.status)) throw AppError.badRequest('ແກ້ໄຂໄດ້ສະເພາະ Invoice ທີ່ mismatch/received');
+      if (!['mismatch', 'received'].includes(inv.status)) {
+        throw AppError.badRequest('ແກ້ໄຂໄດ້ສະເພາະ Invoice ທີ່ mismatch/received');
+      }
 
-      const po          = inv.purchaseOrder;
-      const tolerance   = Number(po.totalAmount) * (env.INVOICE_MATCH_TOLERANCE_PERCENT / 100);
-      const variance    = newAmount - Number(po.totalAmount);
-      const isMatched   = Math.abs(variance) <= tolerance;
+      const { poAmount, grAmount } = await this.loadMatchAmounts(inv.poId, inv.grId, tx);
+      const { isMatched, variance } = evaluateInvoiceMatch(
+        newAmount,
+        poAmount,
+        grAmount,
+        env.INVOICE_MATCH_TOLERANCE_PERCENT,
+      );
       const taxAmount   = Number(inv.taxAmount);
       const totalAmount = newAmount + taxAmount;
 
@@ -94,7 +117,6 @@ class InvoiceService {
     });
   }
 
-  // ─── Override ອະນຸມັດ (mismatch ໂດຍມີ comment) ─────────────
   async overrideApprove(id: number, comment: string, userId: number) {
     const inv = await prisma.invoice.findUnique({ where: { id } });
     if (!inv) throw AppError.notFound('ບໍ່ພົບ Invoice');
@@ -107,11 +129,12 @@ class InvoiceService {
     return updated;
   }
 
-  // ─── ຍົກເລີກ Invoice ─────────────────────────────────────────
   async cancel(id: number, userId: number) {
     const inv = await prisma.invoice.findUnique({ where: { id } });
     if (!inv) throw AppError.notFound('ບໍ່ພົບ Invoice');
-    if (['approved', 'paid'].includes(inv.status)) throw AppError.badRequest('ບໍ່ສາມາດຍົກເລີກ Invoice ທີ່ approved/paid ແລ້ວ');
+    if (inv.status === 'paid') throw AppError.badRequest('ບໍ່ສາມາດຍົກເລີກ Invoice ທີ່ຊຳລະຄົບແລ້ວ');
+    const payCount = await prisma.payment.count({ where: { invoiceId: id } });
+    if (payCount > 0) throw AppError.badRequest('ມີການຊຳລະແລ້ວ — ບໍ່ສາມາດຍົກເລີກ');
     await prisma.invoice.delete({ where: { id } });
     auditLog(userId, 'DELETE', 'invoices', id, { status: inv.status, invoiceNumber: inv.invoiceNumber }, null);
     return { deleted: true };
@@ -119,9 +142,31 @@ class InvoiceService {
 
   async pay(invoiceId: number, dto: CreatePaymentDto, approvedBy: number) {
     return prisma.$transaction(async (tx) => {
-      const invoice = await (tx as typeof prisma).invoice.findUnique({ where: { id: invoiceId } });
+      const invoice = await (tx as typeof prisma).invoice.findUnique({
+        where:   { id: invoiceId },
+        include: { payments: true },
+      });
       if (!invoice) throw AppError.notFound('ບໍ່ພົບ Invoice');
-      if (invoice.status !== 'approved') throw AppError.badRequest('Invoice ຕ້ອງ approved ກ່ອນ');
+      if (!['approved', 'paid'].includes(invoice.status)) {
+        throw AppError.badRequest('Invoice ຕ້ອງ approved ກ່ອນຈ່າຍ');
+      }
+      if (invoice.status === 'paid') {
+        throw AppError.badRequest('Invoice ຊຳລະຄົບແລ້ວ');
+      }
+
+      const totalDue   = Number(invoice.totalAmount);
+      const paidSoFar  = invoice.payments.reduce((s, p) => s + Number(p.amountPaid), 0);
+      const remaining  = totalDue - paidSoFar;
+
+      if (remaining <= 0) {
+        throw AppError.badRequest('Invoice ຊຳລະຄົບແລ້ວ');
+      }
+      if (dto.amount_paid <= 0) {
+        throw AppError.badRequest('ຈຳນວນຊຳລະຕ້ອງ > 0');
+      }
+      if (dto.amount_paid > remaining + 0.01) {
+        throw AppError.badRequest(`ຈຳນວນເກີນຍອດຄ້າງ (${remaining.toLocaleString()} LAK)`);
+      }
 
       const paymentNumber = await generateRunningNumber('payments', 'PAY', tx);
 
@@ -138,9 +183,23 @@ class InvoiceService {
         },
       });
 
-      await (tx as typeof prisma).invoice.update({ where: { id: invoiceId }, data: { status: 'paid' } });
-      auditLog(approvedBy, 'UPDATE', 'invoices', invoiceId, { status: 'approved' }, { status: 'paid', amountPaid: dto.amount_paid });
-      return payment;
+      const newPaidTotal = paidSoFar + dto.amount_paid;
+      const fullyPaid    = newPaidTotal >= totalDue - 0.01;
+
+      if (fullyPaid) {
+        await (tx as typeof prisma).invoice.update({ where: { id: invoiceId }, data: { status: 'paid' } });
+      }
+
+      auditLog(approvedBy, 'UPDATE', 'invoices', invoiceId,
+        { status: invoice.status, paidSoFar },
+        { status: fullyPaid ? 'paid' : 'approved', amountPaid: dto.amount_paid, paidTotal: newPaidTotal });
+
+      return {
+        payment,
+        paidTotal:    newPaidTotal,
+        remaining:    Math.max(0, totalDue - newPaidTotal),
+        fullyPaid,
+      };
     });
   }
 
@@ -153,14 +212,24 @@ class InvoiceService {
           supplier:     { select: { name: true } },
           purchaseOrder: { select: { poNumber: true } },
           goodsReceipt: { select: { grNumber: true } },
-          payments:     true,
+          payments:     { orderBy: { createdAt: 'asc' } },
         },
         orderBy: { createdAt: 'desc' },
         take: limit, skip: (page - 1) * limit,
       }),
       prisma.invoice.count({ where }),
     ]);
-    return { rows, meta: buildPaginationMeta(total, page, limit) };
+
+    const rowsWithPaid = rows.map((inv) => {
+      const amountPaid = inv.payments.reduce((s, p) => s + Number(p.amountPaid), 0);
+      return {
+        ...inv,
+        amountPaid,
+        amountRemaining: Math.max(0, Number(inv.totalAmount) - amountPaid),
+      };
+    });
+
+    return { rows: rowsWithPaid, meta: buildPaginationMeta(total, page, limit) };
   }
 }
 
